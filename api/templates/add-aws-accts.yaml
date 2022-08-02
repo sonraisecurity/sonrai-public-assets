@@ -1,0 +1,33 @@
+# title of ticket template is required
+title: "Add AWS account to collector"
+
+# The next fields are optional:
+description: "This template allows you to setup a repeatable process of adding AWS Accounts to the Sonrai Platform"
+version: "0.0.1"
+authorName: "Sonrai Security"
+authorEmail: "info@sonraisecurity.com"
+
+# one or more fields must be specified
+fields:
+  - name: "Collector"
+    required: true 
+    type: "select"
+    multi: false
+    select:
+      search: '{PlatformAccounts(where: {cloudType: { op:IN_LIST values: ["aws", "sonraiSaaS"] }}) {items {name srn}}}'
+      path: ["data", "PlatformAccounts", "items"]
+      valueField: "srn"
+      labelFields: ["name", "srn"]
+
+  - name: "Role Name"
+    required: true
+    type: "text"
+    multi: false
+
+  - name: "Bot Role Name"
+    required: true
+    type: "text"
+
+  - name: "Only add accounts with tag key of sonraiSwimlanes"
+    required: true
+    type: "checkbox"

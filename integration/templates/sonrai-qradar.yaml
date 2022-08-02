@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Sonrai Security - Integration
+Parameters:
+  #: Required
+  SonraiToken:
+    Description: "Sonrai GraphQL token"
+    Type: "String"
+    NoEcho: true
+  SyslogHost:
+    Description: "QRadar Event Collector - Host Address"
+    Type: "String"
+  CodeS3Bucket:
+    Description: "S3 Bucket containing the lambda code"
+    Type: "String"
+    Default: "sonrai-integration"
+  CodeS3Key:
+    Description: "S3 Zipfile containing the lambda code"
+    Type: "String"
+    Default: "sonrai-integration.zip"
+
+  #: Optional
+  SyslogHeaderHostname:
+    Description: "Syslog Header Hostname"
+    Type: "String"
+    Default: "sonraialerts-lambdafunction"
+  SyslogProtocol:
+    Description: "QRadar Event Collector - Syslog Protocol"
+    Type: "String"
+    AllowedValues:
+      - TCP
+      - UDP
+    Default: "UDP"
+  SyslogPort:
+    Description: "QRadar Event Collector - Syslog Port"
+    Type: "String"
+    Default: "514"
+  Schedule:
+    Description: "Invocation Schedule/Frequency"
+    Type: "String"
+    Default: "rate(1 hour)"
+  EPSRate:
+    Description: "Events Per Second (EPS) Rate (default 10 eps)"
+    Type: "String"
+    Default: "10"
+  MessageFormat:
+    Description: "Syslog Paylaod Format: 'json' [default] or 'text'"
+    Type: "String"
+    Default: "json"
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Required Parameters"
+        Parameters:
+          - SonraiToken
+          - SyslogHost
+          - CodeS3Bucket
+          - CodeS3Key
+      - Label:
+          default: "Optional Parameters"
+        Parameters:
+          - SyslogHeaderHostname
+          - SyslogProtocol
+          - SyslogPort
+          - Schedule
+          - EPSRate
+          - MessageFormat
+Outputs:
+  LambdaFunctionARN:
+    Value:
+      Fn::GetAtt:
+        - LambdaFunction
+        - Arn
+  LambdaPolicyARN:
+    Value:
+      Ref: LambdaPolicy
+  LambdaRoleARN:
+    Value:
+      Fn::GetAtt:
+        - LambdaRole
+        - Arn
+Resources:
+  #: This policy allows the lambda function to write its logs to CloudWatch and read this stack's secrets
+  LambdaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties: 
+      Description: "Sonrai QRadar Integration - Lambda Policy"
+      Path: /
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          #: Write invocation logs to CloudWatch
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+            Resource: !Join
+              - ''
+              - - 'arn:aws:logs:'
+                - !Ref AWS::Region
+                - ':'
+                - !Ref AWS::AccountId
+                - ':*'
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Join
+              - ''
+              - - 'arn:aws:logs:'
+                - !Ref AWS::Region
+                - ':'
+                - !Ref AWS::AccountId
+                - ':log-group:/aws/lambda/*'
+          #: Read secrets from this stack's secret
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:PutSecretValue
+            Resource: !Ref Secret
+  #: This role is assumed by the lambda to obtain the above policy
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: "Sonrai QRadar Integration - Lambda Role"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Ref LambdaPolicy
+      Path: /
+  #: This lambda function assumes the above role
+  LambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Description: "Sonrai QRadar Integration - Lambda Function"
+      Environment:
+        Variables:
+          SECRET_ARN: !Ref Secret
+          SYSLOGHOST: !Ref SyslogHost
+          SYSLOGPROTOCOL: !Ref SyslogProtocol
+          SYSLOGPORT: !Ref SyslogPort
+          SYSLOGHEADERHOSTNAME: !Ref SyslogHeaderHostname
+          SCHEDULE: !Ref Schedule
+          EPSRATE: !Ref EPSRate
+          MESSAGEFORMAT: !Ref MessageFormat
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+      Role:
+        Fn::GetAtt:
+          - LambdaRole
+          - Arn
+      Handler: "sonrai.qradar.lmd.handle"
+      Runtime: "python3.6"
+      MemorySize: 128
+      Timeout: 900
+  #: This rule invokes the above lambda function at a specific interval
+  LambdaFunctionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Sonrai QRadar Integration - Lambda Execution Trigger"
+      ScheduleExpression: !Ref Schedule
+      State: "ENABLED"
+      Targets:
+        - Arn:
+            Fn::GetAtt:
+              - LambdaFunction
+              - Arn
+          Id: TargetFunctionV1
+  #: This permission is what glues the above rule to the lambda
+  LambdaFunctionRulePermission: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: 
+        Ref: LambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: 
+        Fn::GetAtt: 
+          - LambdaFunctionRule
+          - Arn
+  #: This secret store stores the sensitive parameters of this stack for use in the lambda
+  Secret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: "Sonrai QRadar Integration - Secrets"
+      SecretString: !Sub
+        - '{"SONRAI_TOKEN": "${SonraiToken}", "SEARCH_FROM": ""}'
+        - { SonraiToken: !Ref SonraiToken}

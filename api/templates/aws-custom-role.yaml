@@ -1,0 +1,53 @@
+Description: Creates the Sonrai Role for a Linked Account
+
+Parameters:
+  TrustedAccountId:
+    Type: String
+    Description: The Sonrai account this role will trust.
+    MinLength: '1'
+    MaxLength: '255'
+    Default: '[supplied by Sonrai]'
+ 
+  ExternalId:
+    Type: String
+    Description: External ID for Sonrai
+    Default: '[supplied by Sonrai]'
+   
+Resources:
+  SonraiServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: sonrai-service-role
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecurityAudit
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+            Effect: Allow
+            Principal:
+              AWS:
+                - Fn::Sub: "arn:aws:iam::${TrustedAccountId}:root"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+ 
+  SonraiKMSServicePolicy: # allow kms:decrypt key permission for s3 cloudtrail
+    Type: "AWS::IAM::Policy"
+    Properties:
+      Roles:
+        - Ref: SonraiServiceRole
+      PolicyName: SonraiKMSServicePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: KmsDecrypt
+          Effect: Allow
+          Action:
+            - kms:Decrypt
+          Resource:
+            - !ImportValue [keystore:keyname-arn]
+ 
+  SonraiS3ServicePolicy: # custom modification on top of the SecurityAudit policy
+    Type: "AWS::IAM::Policy"
+    Properties:
