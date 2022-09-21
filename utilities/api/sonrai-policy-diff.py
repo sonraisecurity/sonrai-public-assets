@@ -107,10 +107,10 @@ class policyDiff:
           )
           {
     count
-    items {
+    items (limit: -1) {
       title
       srn
-      contains {count items {
+      contains {count items (limit: -1) {
         title
         srn
         createdDate
