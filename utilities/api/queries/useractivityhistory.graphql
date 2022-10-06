@@ -1,0 +1,31 @@
+# Requires the use of variables for the time filter
+#   $ ./sonraicrc-api.py -f queries/useractivityhistory.graphql -v '{ "from": 1591814319, "to": 1591914319}'
+
+query fetchUserActivity ($from: DateTime, $to: DateTime) 
+{  SonraiAuditLogs (
+  where: { 
+	fromDate: {value: $from }
+	toDate: {value: $to }
+}
+) {    
+  count
+  items {      
+    srn      
+    resourceId      
+    type
+    actorSrn
+    createdDate
+    resourceSrn
+    actionType
+    eventName      
+    message
+    actor {
+      name
+      email
+    }
+    
+  }
+ }
+}
+
+
