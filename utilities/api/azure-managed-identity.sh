@@ -31,10 +31,19 @@ main() {
     exit 2
   fi
   echo "AuditLog.Read.All (Microsoft Graph) objectId: ${_audit_log_read_all}"
+  # Policy.Read.All Application Role within Microsoft Graph Application
+  local _policy_read_all
+  if ! _policy_read_all=$(az ad sp show --id "${_graph_object_id}" --query "appRoles[?value=='Policy.Read.All'].id | [0]" --out tsv --only-show-errors) ; then
+    echo "Failed to locate application role: Policy.Read.All (Microsoft Graph:${_graph_object_id})" 1>&2
+    exit 2
+  fi
+  echo "Policy.Read.All (Microsoft Graph) objectId: ${_policy_read_all}"
   echo "Assigning principal (${_principal_id}) Directory.Read.All (${_directory_read_all}) within Microsoft Graph (${_graph_object_id})..."
   _assign_role "${_principal_id}" "${_graph_object_id}" "${_directory_read_all}"
   echo "Assigning principal (${_principal_id}) AuditLog.Read.All (${_audit_log_read_all}) within Microsoft Graph (${_graph_object_id})..."
   _assign_role "${_principal_id}" "${_graph_object_id}" "${_audit_log_read_all}"
+  echo "Assigning principal (${_principal_id}) Policy.Read.All (${_audit_log_read_all}) within Microsoft Graph (${_graph_object_id})..."
+  _assign_role "${_principal_id}" "${_graph_object_id}" "${_policy_read_all}"
 }
 
 _assign_role() {
