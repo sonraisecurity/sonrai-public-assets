@@ -110,6 +110,7 @@ class SonraiApi:
 
     def SonraiGraphQLQuery(self,varServer,varQuery,varQueryName,token):
         varHeaders = self.buildAuthHeader(token, varQueryName)
+        # varHeaders['Cache=Control'] = 'no-cache'
         self.sonraiquery = requests.session()
 
         if self.checkcertificate is False:
@@ -193,13 +194,17 @@ class SonraiApi:
         elif myResponse.status_code == 500:
             self.logger.error("Error returned " )
             self.logger.error(str(myResponse.json()))
-            sys.exit(8)
+            # adding sleep, to see if the graphql server can recover
+            time.sleep(9)
+            # removing exit - should only abort on a non-recoverable error, like failed auth
+            # sys.exit(8)
         elif "Unexpected exception while fetching Grpc data" in str(myResponse.json()):
             self.logger.error("GPRC error message received:")
             self.logger.error("This occurs if the query size limit is reached.")
             self.logger.error("Try limiting your query with additional filters & try again.")
             self.logger.error(json.dumps(myResponse.json()))
-            sys.exit(7)
+            # removing exit - should only abort on a non-recoverable error, like failed auth
+            # sys.exit(7)
 
 
         myResponse=myResponse.json()
@@ -209,7 +214,7 @@ class SonraiApi:
     # buildAuthHeader - Return the API authorization header.
 
     def buildAuthHeader(self, token, varQueryName):
-        return {"authorization": "Bearer " + token, "Content-type": "application/json", "query-name": varQueryName}
+        return {"authorization": "Bearer " + token, "Content-type": "application/json", "query-name": varQueryName, "Cache-Control": "no-cache"}
 
     ## end buildAuthHeader
 
@@ -529,4 +534,3 @@ class SonraiApi:
         return self.api_parsed_response
 
     ################### end def ####################
-
