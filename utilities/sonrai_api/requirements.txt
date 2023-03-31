@@ -1,0 +1,12 @@
+PyJWT
+requests
+
+#
+# source {path to venv}/bin/activate
+#
+# pip3 install -r requirements.txt (Best)
+# or
+# pip list --outdated --format=freeze | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U
+#
+# deactivate
+#
