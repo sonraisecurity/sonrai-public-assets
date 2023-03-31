@@ -11,7 +11,7 @@ This library (sonrai_api) provides users with the ability to query the Sonrai Gr
   * Execute a raw GraphQL query passed via command line
   * Build logic to leverage the output of one query in another query
 
-For more information on the GraphQL query format, open the [Advanced Search page](https://crc.sonraisecurity.com/App/GraphExplorer) in the Sonrai UI and view the documentation.
+For more information on the GraphQL query format, open the [Advanced Search page](https://app.sonraisecurity.com/App/GraphExplorer) in the Sonrai UI and view the documentation.
 
 ## Prerequisites
 #### requirements.txt
