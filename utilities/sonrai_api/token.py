@@ -61,7 +61,6 @@ _token_file = os.environ.get("SONRAI_API_TOKENFILE", config['token_file'])
 _env_token = os.environ.get("TOKEN", None)
 _token_refresh_secs = os.environ.get("SONRAI_TOKEN_REFRESH_SECS", config['token_refresh_threshold_secs'])
 _api_server = os.environ.get("SONRAI_API_SERVER", None)
-_proxy_server = os.environ.get("PROXY_SERVER", config['proxy_server'])
 _jwt_options = {"verify_iat": True, "verify_nbf": True, "verify_exp": True, "verify_iss": True, "verify_aud": False, "verify_signature": False}
 
 # Set level according to the config file.
@@ -148,9 +147,29 @@ def renew_token():
     _query_name = "SonraiAPIClient_TokenRenew"
     _post_fields = json.dumps({"query": _query, "variables": "{}"})
     _headers = {"authorization": "Bearer " + token, "Content-type": "application/json", "query-name": _query_name, "Cache-Control": "no-cache"}
+    _verify = True
+    _proxy_server = None
+
+    if config['verify_ssl'] == 0:
+        _verify = False
+        logger.debug("ssl verification disabled by config")
+
+    if config['proxy_server']:
+        _proxy_server = {
+            "http": config['proxy_server'],
+            "https": config['proxy_server']
+        }
+        logger.debug("using proxy server: {}".format(config['verify_ssl']))
 
     try:
-        response = requests.post(get_graph_url(), data=_post_fields, headers=_headers, proxies=_proxy_server, timeout=30)
+        response = requests.post(
+            get_graph_url(),
+            data=_post_fields,
+            headers=_headers,
+            proxies=_proxy_server,
+            timeout=config['query_timeout'],
+            verify=_verify
+        )
         r_json = response.json()
 
         if response.status_code == 200:
