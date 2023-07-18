@@ -1,0 +1,16 @@
+#!/usr/local/bin/python3.9
+import pandas as pd
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-i','--input', help='input json file', required=True)
+parser.add_argument('-o','--output', help='output csv file', required=True)
+args = parser.parse_args()
+
+jsonfile = args.input
+csvfile = args.output
+
+with open(jsonfile, encoding='utf-8') as inputfile:
+    df = pd.read_json(jsonfile)
+
+df.to_csv(csvfile, encoding='utf-8', index=False)
