@@ -1,13 +1,13 @@
 import argparse
 import json
 import sys
+import time
 # import pandas as pd
 import urllib.parse
 import datetime
 from datetime import timedelta, date
 from urllib.parse import urlparse, parse_qs
 from sonrai_api import api, logger
-
 
 def build_graphql(url, q_file):
     # build the search for the SRNs based on either a graphql file or ticket screen URL
@@ -69,6 +69,9 @@ def parse_url(url):
         elif key == "sortDirection" or key == "sortColumn":
             # we don't need to worry about sorting, so ignoring
             continue
+        elif key == "pageIndex":
+            # we don't need to worry about the pageIndex, so ignoring
+            continue
         else:
             # get all the values for a key and build IN_LIST filter
             for value in query_params[key]:
@@ -85,7 +88,8 @@ def parse_url(url):
     if args.export:
         # getting most of the same fields the UI grabs for an export
         full_query = '''
-            query Tickets ($limit: Long, $offset: Long) { Tickets (where: { ''' + where_clause + ''' } ) { count items (limit:$limit offset:$offset) {
+            query Tickets ($limit: Long, $offset: Long) { Tickets (where: { ''' + where_clause + ''' } )
+            { globalCount count items (limit:$limit offset:$offset ''' + includeRisk + ''') {
                 resourceName
                 severityNumeric
                 title
@@ -109,7 +113,8 @@ def parse_url(url):
     else:
         # only need the SRN of the tickets for all actions except export
         full_query = '''
-        query Tickets ($limit: Long, $offset: Long) { Tickets (where: { ''' + where_clause + ''' } ) { count items (limit:$limit offset:$offset) {srn} } }
+        query Tickets ($limit: Long, $offset: Long) { Tickets (where: { ''' + where_clause + ''' } )
+             { globalCount count items (limit:$limit offset:$offset ''' + includeRisk + ''') {srn} } }
         '''
     logger.debug("URL Query Filter = {}".format(full_query))
     return full_query
@@ -139,24 +144,24 @@ def add_comment_to_tickets(data, comment):
 
     # find the last ticket's srn, so we know when we are done the loop, and we can execute the mutation one last time
     last_ticket_srn = data['data']['Tickets']['items'][-1]['srn']
+    global_count = data['data']['Tickets']['globalCount']
     for ticket in data['data']['Tickets']['items']:
         # walk through all tickets
         if counter == 0:
-            # re-init the variable after each 1000 tickets
-            logger.debug("Preparing 1000 tickets to add comment")
+            # re-init the variable after each [tickets_per_cycle] tickets
+            logger.debug("Preparing {} tickets to add comment".format(tickets_per_cycle))
             ticket_var = {"requests": []}
         new_item = {"ticketSrn": ticket['srn'], "createdBy": user_srn, "body": comment}
         ticket_var['requests'].append(new_item)
         counter += 1
         total_count += 1
-        if counter == 1000 or last_ticket_srn == ticket['srn']:
-            # we have 1000 tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
-            counter = 0
+        if counter == tickets_per_cycle or last_ticket_srn == ticket['srn']:
+            # we have [tickets_per_cycle] tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
             results = api.execute_query(bulk_comment_mutation, ticket_var)
-            # logger.debug("results from adding comments\n{}".format(results))  # very verbose, commenting out for now
-            logger.debug("Added comments to tickets")
+            logger.debug("Added comments to tickets {} / {}".format(total_count, global_count))
+            counter = 0
 
-    logger.info("Comments are added to {} total tickets".format(total_count))
+    logger.info("Comments were added to {} total tickets".format(total_count))
     
     
 def get_user_srn(email):
@@ -203,14 +208,14 @@ def assign_tickets(user_email, data):
     for ticket in data['data']['Tickets']['items']:
         # walk through all tickets
         if counter == 0:
-            # re-init the variable after each 1000 tickets
+            # re-init the variable after each [tickets_per_cycle] tickets
             ticket_var = {"requests": []}
         new_item = {"ticketSrn": ticket['srn'], "userSrn": user_srn}
         ticket_var['requests'].append(new_item)
         counter += 1
         total_count += 1
-        if counter == 1000 or last_ticket_srn == ticket['srn']:
-            # we have 1000 tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
+        if counter == tickets_per_cycle or last_ticket_srn == ticket['srn']:
+            # we have [tickets_per_cycle] tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
             counter = 0
             results = api.execute_query(assign_tickets_mutation, ticket_var)
             logger.debug("results of assigning tickets {}".format(results))
@@ -265,7 +270,7 @@ def update_ticket_status(action, data, snooze_days=None):
     for ticket in data['data']['Tickets']['items']:
         # walk through all tickets
         if counter == 0:
-            # re-init the variable after each 1000 tickets
+            # re-init the variable after each [tickets_per_cycle] tickets
             ticket_var = {"srns": []}
             if snooze_date is not None:
                 # for snoozed tickets we need to add the snoozeUntil value to the json
@@ -273,8 +278,8 @@ def update_ticket_status(action, data, snooze_days=None):
         ticket_var['srns'].append(ticket['srn'])
         counter += 1
         total_count += 1
-        if counter == 1000 or last_ticket_srn == ticket['srn']:
-            # we have 1000 tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
+        if counter == tickets_per_cycle or last_ticket_srn == ticket['srn']:
+            # we have [tickets_per_cycle] tickets or have reached the last ticket, time to reset the counter and then add comments to the ones already processed
             counter = 0
             results = api.execute_query(ticket_status_mutation, ticket_var)
             logger.debug(results)
@@ -283,31 +288,55 @@ def update_ticket_status(action, data, snooze_days=None):
     
 
 def query_tickets(query):
-    # This is used to loop the tickets 1000 at a time until they are all captured
+    # This is used to loop the tickets [tickets_per_cycle] at a time until they are all captured
     offset = 0
-    limit = 1000
+    limit = tickets_per_cycle
+    total = 0
+    myretries = 0
     count = None
     results = {}
-    while count is None or count == 1000:
-        # looping through up to 1000 at a time
+    while count is None or count == tickets_per_cycle:
+        # looping through up to [tickets_per_cycle] at a time
         query_vars = json.dumps({"limit": limit, "offset": offset})
-        logger.debug("querying {} tickets".format(limit))
-        data = api.execute_query(query, query_vars)
-        if 'errors' in data:
-            # check to see if there are any errors in the results, if so stop processing
-            logger.error("Invalid query {}".format(data))
-            logger.error("Validate query before proceeding")
-            sys.exit(1)
-        count = data['data']['Tickets']['count']
-        logger.debug("adding {} tickets to the results".format(count))
-        if results == {}:
-            # this is the first query, so no value in results, just copying the data value into results
-            results = data.copy()
-        else:
-            # this is all subsequent passes, where we are extending the results with the data
-            results['data']['Tickets']['items'].extend(data['data']['Tickets']['items'])
-            results['data']['Tickets']['count'] += count
+        logger.debug("querying {} tickets, offset: {}".format(limit, offset))
+        success = False
         
+        while success == False:
+            try:
+                data = api.execute_query(query, query_vars)
+                if 'errors' in data:
+                    # check to see if there are any errors in the results, if so stop processing
+                    logger.error("Invalid query {}".format(data))
+                    logger.error("Validate query before proceeding")
+                    sys.exit(1)
+                count = data['data']['Tickets']['count']
+                globalCount = str(data['data']['Tickets']['globalCount'])
+                
+                if results == {}:
+                    # this is the first query, so no value in results, just copying the data value into results
+                    results = data.copy()
+                else:
+                    # this is all subsequent passes, where we are extending the results with the data
+                    results['data']['Tickets']['items'].extend(data['data']['Tickets']['items'])
+                    results['data']['Tickets']['count'] += count
+                
+                logger.debug("adding " + str(count) + " tickets to the results (" + str(results['data']['Tickets']['count']) + "/" + globalCount + ")")
+                # logger.debug("success=True")
+                success = True
+            
+            except Exception as e:
+                logger.debug(Exception)
+                logger.debug(e)
+                myretries += 1
+                if myretries == 10:
+                    # abandon ship
+                    raise SonraiAPIException("max retries (10) hit - giving up")
+                
+                logger.debug("error, waiting 60 seconds and then retry - " + str(myretries))
+                time.sleep(60)
+            
+        # upon successful query, reset retries & increment the offset
+        myretries = 0
         if count == limit:
             offset += limit
     
@@ -365,6 +394,8 @@ query_method = parser.add_mutually_exclusive_group(required=True)
 # Add the command line options
 query_method.add_argument('-f', '--file', type=str, help='File containing graphQL query for tickets')
 query_method.add_argument('-u', '--url', type=str, help='UI URL to ticket screen with the query to run. Must be a quoted string')
+parser.add_argument('-l', '--limit', type=int, default=1000, help='The limit of tickets to be pulled with each pass. DEFAULT = 1000')
+parser.add_argument('--findings', '--includeRisk', action="store_true", help=argparse.SUPPRESS)
 parser.add_argument('-m', '--message', type=str, help='Message or comment to add to ticket(s). Must be a quoted string. A comment is required for all actions except --export')
 parser.add_argument('-a', '--assign', metavar='EMAIL', help='Assign ticket(s) to user with <EMAIL>')
 parser.add_argument('-c', '--close', action='store_true', default=None, help='Close ticket(s) from search')
@@ -397,7 +428,16 @@ if not (args.export or args.assign) and args.message is None:
     print("Action requires a comment before proceeding")
     parser.print_help()
     sys.exit(1)
-    
+
+#set the number of tickets to pull with each pass
+tickets_per_cycle = args.limit
+
+#set the includeRisk to false by default (aka: findings)
+includeRisk = 'includeRisk:false'
+if args.findings:
+    # set to true to include the risk findings
+    includeRisk = 'includeRisk:true'
+
 ticket_query = build_graphql(args.url, args.file)
 
 # gather the list of tickets based on the filter
@@ -407,7 +447,7 @@ response = query_tickets(ticket_query)
 if response['data']['Tickets']['count'] == 0:
     logger.info("No tickets found with query, no action will be performed")
     sys.exit(0)
-
+    
 # we have tickets so perform the necessary action
 if args.assign:
     # assign tickets from query
