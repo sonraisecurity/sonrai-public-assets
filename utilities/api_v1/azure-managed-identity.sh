@@ -42,7 +42,7 @@ main() {
   _assign_role "${_principal_id}" "${_graph_object_id}" "${_directory_read_all}"
   echo "Assigning principal (${_principal_id}) AuditLog.Read.All (${_audit_log_read_all}) within Microsoft Graph (${_graph_object_id})..."
   _assign_role "${_principal_id}" "${_graph_object_id}" "${_audit_log_read_all}"
-  echo "Assigning principal (${_principal_id}) Policy.Read.All (${_audit_log_read_all}) within Microsoft Graph (${_graph_object_id})..."
+  echo "Assigning principal (${_principal_id}) Policy.Read.All (${_policy_read_all}) within Microsoft Graph (${_graph_object_id})..."
   _assign_role "${_principal_id}" "${_graph_object_id}" "${_policy_read_all}"
 }
 
