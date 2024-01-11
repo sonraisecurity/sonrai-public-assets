@@ -56,10 +56,10 @@ The following are the tags used to build out your swimlanes within the Sonrai pl
 #### Sample configuration
 
 ##### AWS related Swimlane
-< insert AWS screenshot >
+![image (7)](https://github.com/sonraisecurity/sonrai-public-assets/assets/106173154/8b217311-c5b4-4500-a352-824d24500fb9)
 
 ##### Azure related Swimlane based on Resource Groups
-< insert Azure screenshot >
+![image (8)](https://github.com/sonraisecurity/sonrai-public-assets/assets/106173154/e1b2719a-bec0-4d72-8c13-90b3c4bb71bf)
 
 ## Usage
 
