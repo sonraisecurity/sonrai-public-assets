@@ -8,9 +8,11 @@ The `swimlane-maintenance.py` script is used to create and update Sonrai swimlan
 
 ### Script requirements
 - python version 3 and above
-- **sonrai_api** - a folder created and hosted in same directory as this script, which contains the sonrai api python library available at (url)
-- sonrai user token with at least `Swimlane Creator` permission
+- hosting location - such as linux VM or similar environment
+- **sonrai_api** - a folder created and hosted in same directory as this script, which contains the sonrai api python library available at https://github.com/sonraisecurity/sonrai-public-assets/tree/main/utilities/sonrai_api
+- **sonrai api token** - token from a user with at least `Data Viewer / All Swimlanes` and `Swimlane Creator` permission.  Instructions for creating tokens available at https://docs.sonraisecurity.com/api/sonrai-graphql-api#user-api-keys
 - **orgs tagging scheme** - the tagging convention used by your organization to identify individual applications and environments 
+
 
 ### Sonrai platform requirements
 - **swimlane template** - a template consisting of a swimlane prefixed with **~SonraiSwimlaneTemplate_** and defined **Tag Filters** (accounts (AWS Accounts or GCP Projects) or resource IDs (Azure resource groups or subscriptions)) 
