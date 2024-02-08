@@ -11,7 +11,7 @@ import os
 create_test_mode = os.environ.get('CREATE_TEST_MODE', False)
 update_test_mode = os.environ.get('UPDATE_TEST_MODE', False)
 max_sl_add_per_run = os.environ.get('MAX_PER_RUN', 5)
-max_sl_total = os.environ.get('MAX_TOTAL', 30)
+max_sl_total = os.environ.get('MAX_TOTAL', 200)
 
 ##########
 # setup logging
@@ -79,10 +79,11 @@ def get_tagSet_values(sl_template):
     
     query_filter = ('''
     {{
+    active: {{ value:true }}
     cloudType: {{ op:EQ value: "{cloud_type}" }}
     and: [
         {{ tagSet: {{op:IN_LIST values: {env} }} }}
-        {{ tagSet: {{op:CONTAINS value: "{app}" }} }}
+        {{ tagSet: {{op:CONTAINS value: "{app}" caseSensitive:false }} }}
       ]
     }}'''.format(cloud_type=sl_template['cloud_type'], app=sl_template['app_tag_name'].replace('*', ''), env=env_filter))
     query_filter = query_filter.replace("'", '"')
@@ -137,10 +138,11 @@ def resource_query_builder(sl_template, app, env_filter):
     # build the filters for the query
     query_filter = ('''
     {{
+    active: {{ value:true }}
     cloudType: {{ op:EQ value: "{cloud_type}" }}
     and: [
         {{ tagSet: {{op:IN_LIST values: {env} }} }}
-        {{ tagSet: {{op:EQ value: "{app}" }} }}
+        {{ tagSet: {{op:EQ value: "{app}" caseSensitive:false }} }}
       ]
     }}'''.format(cloud_type=cloud_type, app=app_key_value_pair, env=env_filter))
     query_filter = query_filter.replace("'", '"')
@@ -292,6 +294,7 @@ def update_swimlane(srn, sl_template, app, env_filter):
         logger.info("Nothing to do for Swimlane: " + item['title'])
 
 
+# main
 # get count of all swimlanes:
 swimlanes_all = get_swimlanes('{ }')
 total_count = swimlanes_all['data']['Swimlanes']['count']
@@ -337,14 +340,15 @@ for sl in swimlanes_templates['data']['Swimlanes']['items']:
     logger.info("Found {} swimlanes with prefix {}".format(swimlanes_existing['data']['Swimlanes']['count'], sl['swimlane_prefix']))
     logger.debug("Existing templated swimlanes: {}".format(swimlanes_existing))
     
+    # for each app type, create if new and/or update
     for app in app_tag_list:
-        # for each app type, create if new or update
+        app = str(app).lower() # convert app name to lower case to make swimlanes case insensitive
         swimlane_name = "{prefix}_{app_name}_{env_name}".format(prefix=sl['swimlane_prefix'], app_name=app, env_name=sl['sonrai_env'])
         found = 0
         existing_swimlane_srn = None
         new_swimlane_srn = None
         for existing in swimlanes_existing['data']['Swimlanes']['items']:
-            if swimlane_name == existing['title']:
+            if swimlane_name == str(existing['title']).lower():
                 found = 1
                 existing_swimlane_srn = existing['srn']
                 break
