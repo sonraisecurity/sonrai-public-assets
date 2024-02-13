@@ -11,7 +11,7 @@ import os
 create_test_mode = os.environ.get('CREATE_TEST_MODE', False)
 update_test_mode = os.environ.get('UPDATE_TEST_MODE', False)
 max_sl_add_per_run = os.environ.get('MAX_PER_RUN', 5)
-max_sl_total = os.environ.get('MAX_TOTAL', 30)
+max_sl_total = os.environ.get('MAX_TOTAL', 200)
 
 ##########
 # setup logging
@@ -79,10 +79,11 @@ def get_tagSet_values(sl_template):
     
     query_filter = ('''
     {{
+    active: {{ value:true }}
     cloudType: {{ op:EQ value: "{cloud_type}" }}
     and: [
         {{ tagSet: {{op:IN_LIST values: {env} }} }}
-        {{ tagSet: {{op:CONTAINS value: "{app}" }} }}
+        {{ tagSet: {{op:CONTAINS value: "{app}" caseSensitive:false }} }}
       ]
     }}'''.format(cloud_type=sl_template['cloud_type'], app=sl_template['app_tag_name'].replace('*', ''), env=env_filter))
     query_filter = query_filter.replace("'", '"')
@@ -137,10 +138,11 @@ def resource_query_builder(sl_template, app, env_filter):
     # build the filters for the query
     query_filter = ('''
     {{
+    active: {{ value:true }}
     cloudType: {{ op:EQ value: "{cloud_type}" }}
     and: [
         {{ tagSet: {{op:IN_LIST values: {env} }} }}
-        {{ tagSet: {{op:EQ value: "{app}" }} }}
+        {{ tagSet: {{op:EQ value: "{app}" caseSensitive:false }} }}
       ]
     }}'''.format(cloud_type=cloud_type, app=app_key_value_pair, env=env_filter))
     query_filter = query_filter.replace("'", '"')
@@ -292,6 +294,7 @@ def update_swimlane(srn, sl_template, app, env_filter):
         logger.info("Nothing to do for Swimlane: " + item['title'])
 
 
+# main
 # get count of all swimlanes:
 swimlanes_all = get_swimlanes('{ }')
 total_count = swimlanes_all['data']['Swimlanes']['count']
@@ -299,6 +302,7 @@ new_sl_added_count = 0
 # get all the swimlane templates
 logger.info("Searching for templated swimlanes")
 swimlanes_templates = get_swimlanes('{{title: {{op:CONTAINS value:"{title}"}} }}'.format(title="~Sonrai"))
+already_updated_swimlanes = []
 # loop through each template
 for sl in swimlanes_templates['data']['Swimlanes']['items']:
     template_count = 0
@@ -332,25 +336,31 @@ for sl in swimlanes_templates['data']['Swimlanes']['items']:
     logger.info("Found {} unique application tags".format(len(app_tag_list)))
     
     # get the current swimlanes from the swimlane prefix
-    logger.info("Gathering existing swimlanes that match template with prefix of {prefix} and environment of {env}".format(prefix=sl['swimlane_prefix'], env=sl['sonrai_env']))
-    swimlanes_existing = get_swimlanes('{{ and: [ {{title: {{op:CONTAINS value:"{prefix}" }} }} {{ title: {{op:CONTAINS value:"{env}" }} }} ] }}'.format(prefix=sl['swimlane_prefix'], env=sl['sonrai_env']))
-    logger.info("Found {} swimlanes with prefix {}".format(swimlanes_existing['data']['Swimlanes']['count'], sl['swimlane_prefix']))
+    prefix_str = str(sl['swimlane_prefix']).lower()
+    env_str = str(sl['sonrai_env']).lower()
+    logger.info("Gathering existing swimlanes that match template with prefix of {prefix} and environment of {env}".format(prefix=prefix_str, env=env_str))
+    swimlanes_existing = get_swimlanes('{{ and: [ {{title: {{op:CONTAINS value:"{prefix}" }} }} {{ title: {{op:CONTAINS value:"{env}" }} }} ] }}'.format(prefix=prefix_str, env=env_str))
+    counter = swimlanes_existing['data']['Swimlanes']['count']
+    logger.info("Found {} swimlanes with prefix {}".format(counter, prefix_str))
     logger.debug("Existing templated swimlanes: {}".format(swimlanes_existing))
     
+    # for each app type, create if new and/or update
     for app in app_tag_list:
-        # for each app type, create if new or update
-        swimlane_name = "{prefix}_{app_name}_{env_name}".format(prefix=sl['swimlane_prefix'], app_name=app, env_name=sl['sonrai_env'])
+        app = str(app).lower() # convert app name to lower case to make swimlanes case insensitive
+        swimlane_name = str("{prefix}_{app_name}_{env_name}".format(prefix=prefix_str, app_name=app, env_name=env_str)).lower()
         found = 0
         existing_swimlane_srn = None
         new_swimlane_srn = None
         for existing in swimlanes_existing['data']['Swimlanes']['items']:
-            if swimlane_name == existing['title']:
+            if swimlane_name == str(existing['title']).lower():
+                # we have a match
                 found = 1
                 existing_swimlane_srn = existing['srn']
-                break
+                break  # breaking so that we can move to the next one faster
             else:
+                # no match on this pass try the next one
                 continue
-        
+                
         if found:
             # Do nothing, it already exists
             logger.debug("Swimlane already exists: {}".format(swimlane_name))
@@ -372,7 +382,11 @@ for sl in swimlanes_templates['data']['Swimlanes']['items']:
                     break
                 else:
                     response_new_swimlane = create_swimlane(sl, app, swimlane_name)
+                    # add the new swimlane to the list of existing swimlanes
                     new_swimlane_srn = response_new_swimlane['data']['CreateSwimlane']['srn']
+                    new_swimlane_title = response_new_swimlane['data']['CreateSwimlane']['title']
+                    new_item = {"title": new_swimlane_title, "srn": new_swimlane_srn}
+                    swimlanes_existing['data']['Swimlanes']['items'].append(new_item)
                     template_count += 1
                     new_sl_added_count += 1
             else:
@@ -383,8 +397,20 @@ for sl in swimlanes_templates['data']['Swimlanes']['items']:
         if update_test_mode is False:
             # update swimlanes
             if new_swimlane_srn is not None:
-                update_swimlane(new_swimlane_srn, sl, app, envs)
+                # this is a new swimlane that needs updating
+                if new_swimlane_srn not in already_updated_swimlanes:
+                    # swimlane hasn't been updated in this iteration of the script, update the filters
+                    update_swimlane(new_swimlane_srn, sl, app, envs)
+                    already_updated_swimlanes.append(new_swimlane_srn)
+                else:
+                    logger.debug("Swimlane {} has already been updated in this run of the script".format(new_swimlane_srn))
             elif existing_swimlane_srn is not None:
-                update_swimlane(existing_swimlane_srn, sl, app, envs)
+                # this is an existing swimlane that needs updating
+                if existing_swimlane_srn not in already_updated_swimlanes:
+                    # swimlane hasn't been updated in this iteration of the script, update the filters
+                    update_swimlane(existing_swimlane_srn, sl, app, envs)
+                    already_updated_swimlanes.append(existing_swimlane_srn)
+                else:
+                    logger.debug("Swimlane {} has already been updated in this run of the script".format(existing_swimlane_srn))
             else:
                 logger.error("No swimlane SRN available, nothing to update")
