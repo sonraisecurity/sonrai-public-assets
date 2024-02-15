@@ -10,6 +10,9 @@ The bulk-ticket-operations.py script allows you to add comments, change the stat
 
 - **sonrai_api** - folder in same directory as this script
 - **Sonrai ticket query** - A query that is either built in GraphQL format, built in Sonrai Advanced Search page, or built using the user interface's ticket screen to build a query and then use the URL field as the basis of the query.
+- **Python Library**:
+  - **pandas** - library for converting to CSV format
+    - Installation: `pip3 install pandas`
 
 ## Description
 
@@ -40,7 +43,7 @@ usage: bulk-ticket-operations.py [-h] (-f FILE | -u URL) [-m MESSAGE]
 | **query options** |                     |                                                                                                                                                                    |
 | `-f FILE`         | `--file FILE`       | Provide the GraphQL query in the file <FILE>. More details available [below](#Query-File-Format).                                                                  |
 | `-u URL`          | `--URL URL`         | The ***URL*** from the UI's ticket screen, which includes all the necessary filters. More details available [below](#Query-URL). [_Note: Must be a quoted string_] |
-| `-l LIMIT` | `--limit LIMIT` | The ***LIMIT*** is the number of tickets to process with each call of the script. *Default LIMIT:* ***1000***                                                      |
+| `-l LIMIT`        | `--limit LIMIT` | The ***LIMIT*** is the number of tickets to process with each call of the script. *Default LIMIT:* ***1000***                                                      |
 | **actions**       |                     |                                                                                                                                                                    |
 | `-m MESSAGE`      | `--message MESSAGE` | Add a ***MESSAGE*** or comment to the ticket(s) matching the query. Must be a quoted string. ***NOTE:*** Comments are required for all actions except `--export`   |
 | `-a EMAIL`        | `--assign EMAIL`    | Assign ticket(s) to user with *EMAIL* address                                                                                                                      |
@@ -49,6 +52,8 @@ usage: bulk-ticket-operations.py [-h] (-f FILE | -u URL) [-m MESSAGE]
 | `-r`              | `--risk_accept`     | Risk Accept ticket(s) returned from search                                                                                                                         |
 | `-s TIME`         | `--snooze TIME`     | Snooze ticket(s) returned from search for ***TIME*** days                                                                                                          |
 | `-e FILE`         | `--export FILE`     | Export ticket(s) returned from search in JSON format and save in *FILE*                                                                                            |
+|                   | `--csv` | Used in conjunction with the `-e` option to export in CSV format                                                                                                   |
+| | `--swimlane_lookup` | Used in conjunction with the `-e` option to do a Swimlane Name lookup                                                                                              |
 
 
 ## Query File Format
