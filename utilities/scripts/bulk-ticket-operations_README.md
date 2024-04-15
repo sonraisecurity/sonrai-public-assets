@@ -1,6 +1,6 @@
 # bulk-ticket-operations.py
 
-Python script to make bulk actions against Sonrai tickets.
+Python script to make bulk actions against Sonrai tickets or findings.
 
 ## Introduction
 
@@ -16,7 +16,7 @@ The bulk-ticket-operations.py script allows you to add comments, change the stat
 
 ## Description
 
-This script allows you to perform the following actions on Sonrai Tickets:
+This script allows you to perform the following actions on Sonrai Findings:
 - add a comment on tickets
 - change the status of tickets
   - close _(status = "CLOSED")_
@@ -64,15 +64,18 @@ If using the option of `-f` for the query, there are a few different things that
 The script is designed to query 1000 tickets at a time. To accomplish this, your query needs to have the following lines for compatibility.
 
 - **opening header**
-  - `query Ticket ($limit:Long $offset:Long) {`
+  - `query ListFindings ($limit:Long $offset:Long) {`
 - **items**
   - `items (limit:$limit offset:$offset) {`
 
-### Count Values - count / globalCount
-The query uses the ticket `count` and `globalCount` values in the processing of searches over `--limit` results [both values need to be included in the search].
+### Count Values - totalCount / pageCount
+The query uses the finding `pageCount` and `totalCount` values in the processing of searches over `--limit` results [both values need to be included in the search].
 
 ### Filters and Items
 The filters added to the `where` clause and the fields added to the `items` sections of the query are all optional and can be defined as needed. (Example: 'where the SRN is ___', 'where the ticket status is `new`')
+
+If you only want tickets and not findings you can add a line to the filter like this:
+- `isOperationalized:{op:EQ value:true}`
 
 *NOTE:* The more fields you add to the query, the larger the results set that is returned, and the longer the query will take to complete.
 
@@ -82,15 +85,15 @@ Here are a few sample queries that show the script usage:
 
 #### Sample Query 1
 ```
-query Ticket ($limit:Long $offset:Long) {
-  Tickets(
+query ListFindings ($limit:Long $offset:Long) {
+  ListFindings(
     where: {
-      controlFrameworkSrn: {op:EQ value:"srn:Sonrai::ControlFramework/b00cf230-8202-454d-85ea-4d471b166c44/17929365-ec04-456d-8431-c1006cd7e273"}
+      frameworkSrns: {op:EQ value:"srn:Sonrai::ControlFramework/b00cf230-8202-454d-85ea-4d471b166c44/17929365-ec04-456d-8431-c1006cd7e273"}
       status: {op:EQ value:"NEW"}
     }
   ) {
-    globalCount
-    count
+    pageCount
+    totalCount
     items (limit:$limit offset:$offset) {
       title
       srn
@@ -102,16 +105,16 @@ query Ticket ($limit:Long $offset:Long) {
 ```
 #### Sample Query 2
 ```
-query Tickets ($limit: Long, $offset: Long) { 
-  Tickets(
+query ListFindings ($limit: Long, $offset: Long) { 
+  ListFindings(
     where: {  
-      assignedTo: {op:IN_LIST, values:["srn:myOrg::SonraiUser/1b7d8409-0162-45b3-8e66-1a6d2e60c222" ]
+      assignee: {op:IN_LIST, values:["srn:myOrg::SonraiUser/1b7d8409-0162-45b3-8e66-1a6d2e60c222" ]
       } 
     }
   ) 
       { 
-      globalCount 
-      count
+      pageCount 
+      totalCount
       items (limit:$limit offset:$offset) {
         srn
         policy{alertingLevelNumeric}
