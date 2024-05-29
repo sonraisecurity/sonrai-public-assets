@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudFormation template to create an S3 bucket, an IAM user with access to the bucket,
+  and a Lambda function that downloads code from a GitHub repository. All input parameters
+  must be in lowercase and contain no special characters.
+
+Parameters:
+  UserName:
+    Description: 'The name of the IAM user with access to the S3 bucket. Must be lowercase and contain no special characters.'
+    Type: 'String'
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: "IAM user must be lowercase and contain no special characters."
+  S3BucketName:
+    Description: 'The name of the S3 bucket to store json responses. Must be lowercase and contain no special characters.'
+    Type: 'String'
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: "Bucket name must be lowercase and contain no special characters."
+  LambdaFunctionName:
+    Description: 'The name of the Lambda function. Must be lowercase and contain no special characters.'
+    Type: 'String'
+    AllowedPattern: "^[a-z0-9-]+$"
+    ConstraintDescription: "Lambda function name must be lowercase and contain no special characters."
+  TokenFile:
+    Description: 'The token file for the Lambda function, tokenfile is the Sonrai Token, must be created with in Sonrai.'
+    Type: 'String'
+  GitHubZipUrl:
+    Description: 'The URL of the GitHub zip file. Must be a valid URL from raw.githubusercontent.com. This will download the zip from GitHub and upload it to the Lambda function.'
+    Type: 'String'
+    AllowedPattern: "^https://raw\\.githubusercontent\\.com/.*\\.zip$"
+    ConstraintDescription: "GitHub zip file URL must start with https://raw.githubusercontent.com and end with .zip."
+  IntervalHours:
+    Description: 'The interval in hours for running the Lambda function. Default is 24 hours, best not to change this.'
+    Type: 'Number'
+    MinValue: 1
+    Default: 24
+
+Resources:
+  MyS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref S3BucketName
+
+  S3BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref MyS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              AWS: !GetAtt S3User.Arn
+            Action:
+              - 's3:ListBucket'
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+            Resource:
+              - !Sub 'arn:aws:s3:::${S3BucketName}'
+              - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'LambdaBasicExecutionPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:*'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'lambda:UpdateFunctionConfiguration'
+                  - 'lambda:UpdateFunctionCode'
+                  - 'lambda:GetFunctionConfiguration'
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionName}'
+              - Effect: 'Allow'
+                Action:
+                  - 'events:PutRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                  - 'events:DeleteRule'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 's3:GetObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3BucketName}/*'  # Added this line to allow access to the S3 bucket
+
+  S3User:
+    Type: 'AWS::IAM::User'
+    Properties:
+      UserName: !Ref UserName
+
+  S3UserPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'S3UserAccessPolicy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action:
+              - 's3:ListBucket'
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+            Resource:
+              - !Sub 'arn:aws:s3:::${S3BucketName}'
+              - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+      Users:
+        - !Ref S3User
+
+  S3AccessKey:
+    Type: 'AWS::IAM::AccessKey'
+    Properties:
+      UserName: !Ref S3User
+
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Handler: 'index.lambda_handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: !Sub |
+          import json
+          import boto3
+          import os
+          import zipfile
+          from urllib import request
+
+          def lambda_handler(event, context):
+              url = os.environ['GitHubZipUrl']
+              local_zip = "/tmp/function.zip"
+              request.urlretrieve(url, local_zip)
+              
+              # Extract the zip file
+              with zipfile.ZipFile(local_zip, 'r') as zip_ref:
+                  zip_ref.extractall('/tmp/extracted')
+
+              # Create a new zip file with the correct structure
+              new_zip_path = "/tmp/lambda-code.zip"
+              with zipfile.ZipFile(new_zip_path, 'w') as new_zip:
+                  for root, dirs, files in os.walk('/tmp/extracted'):
+                      for file in files:
+                          file_path = os.path.join(root, file)
+                          arcname = os.path.relpath(file_path, '/tmp/extracted')
+                          new_zip.write(file_path, arcname)
+              
+              aws_access_key_id = os.environ['ID_KEY']
+              aws_secret_access_key = os.environ['SECRET_KEY']
+
+              s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+              bucket_name = os.environ['BUCKET_NAME']
+              s3.upload_file(new_zip_path, bucket_name, 'lambda-code.zip')
+              
+              lambda_client = boto3.client('lambda')
+              lambda_client.update_function_code(
+                  FunctionName=os.environ['LAMBDA_FUNCTION_NAME'],
+                  S3Bucket=bucket_name,
+                  S3Key='lambda-code.zip'
+              )
+              
+              # Remove the uploaded file from S3 after updating the Lambda function
+              s3.delete_object(Bucket=bucket_name, Key='lambda-code.zip')
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Lambda function updated successfully!')
+              }
+      Runtime: 'python3.10'
+      Timeout: 300
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref S3BucketName
+          LAMBDA_FUNCTION_NAME: !Ref LambdaFunctionName
+          ID_KEY: !Ref S3AccessKey
+          QUERY: 'query SonraiAuditLogs($fromDate:DateTime!,$toDate:DateTime!){SonraiAuditLogs(where:{fromDate:{value:$fromDate},toDate:{value:$toDate}}){count,items{actor{name,srn},eventName,message}}}'
+          SECRET_KEY: !GetAtt S3AccessKey.SecretAccessKey
+          TOKENFILE: !Ref TokenFile
+          GitHubZipUrl: !Ref GitHubZipUrl
+
+  LambdaScheduleRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      ScheduleExpression: !Sub 'rate(${IntervalHours} hours)'
+      State: 'ENABLED'
+      Targets:
+        - Arn: !GetAtt LambdaFunction.Arn
+          Id: 'LambdaFunctionTarget'
+
+  LambdaInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref LambdaFunctionName
+      Principal: 'events.amazonaws.com'
+      SourceArn: !GetAtt LambdaScheduleRule.Arn
+
+Outputs:
+  S3BucketName:
+    Description: 'Name of the S3 bucket'
+    Value: !Ref S3BucketName
+
+  S3AccessKeyId:
+    Description: 'Access Key ID for S3 user'
+    Value: !Ref S3AccessKey
+
+  S3SecretAccessKey:
+    Description: 'Secret Access Key for S3 user'
+    Value: !GetAtt S3AccessKey.SecretAccessKey
+
+  LambdaFunctionArn:
+    Description: 'ARN of the Lambda function'
+    Value: !GetAtt LambdaFunction.Arn
