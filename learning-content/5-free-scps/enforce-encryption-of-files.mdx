@@ -21,7 +21,7 @@ This SCP will deny anyone from uploading unencrypted files to S3 – except for 
           "s3:x-amz-server-side-encryption": "false"
         },
         "StringNotEqualsIfExists": {
-          "s3:x-amz-server-side-encryption": ["AES256", “aws:kms”]
+          "s3:x-amz-server-side-encryption": ["AES256", "aws:kms"]
         }
       }
     }
