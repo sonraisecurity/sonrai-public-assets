@@ -1,0 +1,40 @@
+## 5 Free SCPs to Use Today
+
+*The fourth in a collection of 5 handy SCPs to apply to your AWS cloud to quickly tighten up your security controls!*
+
+### TO CONSIDER BY USE CASE
+
+#### Enforce encryption of files
+
+This SCP will deny anyone from uploading unencrypted files to S3 – except for any known exceptions you want to add in. First, it denies any file upload that isn’t encrypted, and second it must be a specific type of encryption. This is a great policy to use where you want centralized controls (as opposed to bucket by bucket access control) like in the case of a production account.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Deny",
+      "Action": "s3:PutObject",
+      "Resource": "*",
+      "Condition": {
+        "Null": {
+          "s3:x-amz-server-side-encryption": "false"
+        },
+        "StringNotEqualsIfExists": {
+          "s3:x-amz-server-side-encryption": ["AES256", “aws:kms”]
+        }
+      }
+    }
+    ]
+}
+```
+
+> [!NOTE]
+> NOTE: You can use `NotResource` to make an exemptions for known violations
+> 
+> NOTE: You can use `StringNotEquals` and `Principal` to make an exemptions for known `Callers` 
+>
+
+> [!WARNING]
+> NOTE: You must have encryption turned on
+>
