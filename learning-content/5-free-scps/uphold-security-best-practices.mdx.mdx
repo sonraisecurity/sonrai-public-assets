@@ -1,0 +1,36 @@
+## 5 Free SCPs to Use Today
+
+*The third in a collection of 5 handy SCPs to apply to your AWS cloud to quickly tighten up your security controls!*
+
+### TO CONSIDER BY USE CASE
+
+#### Uphold security best practices
+This SCP is set to enforce some common best practices your organization may want to uphold moving forward. For example, your team may have turned on default encryption for EBS volumes to meet compliance measures, turned off over-permissive default VPCs, or blocked identities from creating IAM users and access keys. It is easy to add any other infrastructure element limitations that make sense for your organization, this is just a strong starting point.
+
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "ec2:CreateDefaultSubnet",
+                "ec2:CreateDefaultVpc",
+                "iam:CreateUser",
+                "iam:CreateAccessKey",
+                "ec2:DisableEbsEncryptionByDefault"
+            ],
+            "Resource": "*",
+            "Effect": "Deny"
+        }
+    ]
+}
+```
+
+> [!NOTE]
+>NOTE: All existing resources will not be affected and will still work.
+>
+
+> [!TIP]
+> NOTE: This will block everyone from these permissions, you may want to consider using a condition statement and principal to make an exception for an approved identity (IaC, Terraform roles, a privileged user, etc.) to use these.
+>
