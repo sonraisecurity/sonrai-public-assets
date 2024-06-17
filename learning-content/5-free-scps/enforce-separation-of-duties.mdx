@@ -1,0 +1,86 @@
+## 5 Free SCPs to Use Today
+
+*The fifth and final in a collection of 5 handy SCPs to apply to your AWS cloud to quickly tighten up your security controls!*
+
+### TO CONSIDER BY USE CASE
+
+####  Enforce Separation of Duties
+
+Limit who can attach IAM policies and prevent privilege escalation with this SCP. Again, this is not an exhaustive list of permissions, but does prevent manipulation of IAM users and roles. The second half allows you to identify an assigned role you want to perform IAM activities. Optional addition for SSO users.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid":"IAMPolicyMutationBlock",
+            "Action": [
+                "iam:AttachRolePolicy",
+                "iam:DeleteRole",
+                "iam:DetachRolePolicy",
+                "iam:DeleteRolePolicy",
+                "iam:DeleteRolePermissionsBoundary",
+                "iam:PutRolePermissionsBoundary",
+                "iam:PutRolePolicy",
+	   "iam:DetachRolePolicy",
+                "iam:AttachUserPolicy",
+                "iam:DeleteUser",
+                "iam:DetachUserPolicy",
+                "iam:DeleteUserPolicy",
+                "iam:DeleteRolePermissionsBoundary",
+                "iam:PutUserPermissionsBoundary",
+	  "iam:PutUserPolicy",
+	   "iam:DetachUserPolicy",
+                "iam:UpdateAssumeRolePolicy",
+                "iam:UpdateRole",
+                "iam:UpdateAccessKey"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringNotLike": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:iam::*:role/MyIAMAssigningRole"
+                    ]
+                }
+            },
+            "Effect": "Deny"
+        },
+        {
+            "Sid": "OnlyIAM",
+            "NotAction": [
+                "iam:*",
+                "sso:*"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "StringNotLike": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:iam::*:role/MyIAMAssigningRole"
+                    ]
+                }
+            },
+            "Effect": "Deny"
+        }
+    ]
+}
+```
+
+> [!TIP]
+> If you also make use of AWS Identity Center for SSO and would also like to control permission set manipulation: 
+> - add `sso:*` to the `NotActions` array of the `OnlyIAM` statement (like above)
+> - include the following permissions in `IAMPolicyMutationBlock` statement 
+>
+> ```json
+> "sso:CreatePermissionSet",
+> "sso:AttachCustomerManagedPolicyReferenceToPermissionSet",
+> "sso:AttachManagedPolicyToPermissionSet",
+> "sso:DeleteInlinePolicyFromPermissionSet",
+> "sso:DeletePermissionsBoundaryFromPermissionSet",
+> "sso:DeletePermissionSet",
+> "sso:DetachCustomerManagedPolicyReferenceFromPermissionSet",
+> "sso:DetachManagedPolicyFromPermissionSet",
+> "sso:UpdatePermissionSet",
+> "sso:PutInlinePolicyToPermissionSet",
+> "sso:PutPermissionsBoundaryToPermissionSet",
+> ```
+>
