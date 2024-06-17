@@ -1,0 +1,38 @@
+## 5 Free SCPs to Use Today
+
+*The first in a collection of 5 handy SCPs to apply to your AWS cloud to quickly tighten up your security controls!*
+
+### EASY NO BRAINER
+
+#### Prevent perimeter breaches
+
+This SCP denies identities the ability to bypass network controls and helps prevent holes in your cloud perimeter. It works by blocking identities that are not authorized by AWS IAM from using presigned URLs – an easy method used to avoid authentication. Specifically, these help prevent unauthorized access to SageMaker resources and Lambda functions.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sagemaker:CreatePresignedDomainUrl"
+            ],
+            "Resource": "*",
+            "Effect": "Deny"
+         },
+        {
+            "Action": [
+                "lambda:CreateFunctionUrlConfig",
+                "lambda:UpdateFunctionUrlConfig"
+            ],
+            "Resource": "arn:aws:lambda:*:*:function/*",
+            "Effect": "Deny",
+            "Condition": {
+                "StringNotEquals": {
+                    "lambda:FunctionUrlAuthType": "AWS_IAM"
+                }
+            }
+        }
+    ]
+}
+
+```
