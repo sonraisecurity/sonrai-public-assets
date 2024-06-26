@@ -24,7 +24,7 @@ This SCP denies identities the ability to bypass network controls and helps prev
                 "lambda:CreateFunctionUrlConfig",
                 "lambda:UpdateFunctionUrlConfig"
             ],
-            "Resource": "arn:aws:lambda:*:*:function/*",
+            "Resource": "arn:aws:lambda:*:*:function:*",
             "Effect": "Deny",
             "Condition": {
                 "StringNotEquals": {
