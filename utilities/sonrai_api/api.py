@@ -14,7 +14,7 @@ def _auth_header():
     }
 
 
-def execute_query(query=None, variables="{}"):
+def execute_query(query=None, variables={}):
     _verify = True
     _proxy = None
     _complete = None
