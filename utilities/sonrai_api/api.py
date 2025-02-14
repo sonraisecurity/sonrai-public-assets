@@ -14,12 +14,13 @@ def _auth_header():
     }
 
 
-def execute_query(query=None, variables={}):
+def execute_query(query=None, variables="{}"):
     _verify = True
     _proxy = None
     _complete = None
     _retries = 0
     _response = None
+    _variables = json.loads(variables)
 
     if config['verify_ssl'] == 0:
         _verify = False
@@ -38,7 +39,7 @@ def execute_query(query=None, variables={}):
             try:
                 _response = requests.post(
                     api_token['sonrai_url'],
-                    data=json.dumps({"query": query, "variables": variables}),
+                    data=json.dumps({"query": query, "variables": _variables}),
                     headers=_auth_header(),
                     proxies=_proxy,
                     timeout=config['query_timeout'],
