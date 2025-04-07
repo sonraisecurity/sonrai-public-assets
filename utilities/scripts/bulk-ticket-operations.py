@@ -11,255 +11,19 @@ from urllib.parse import urlparse, parse_qs
 from sonrai_api import api, logger
 
 
-def build_graphql(url, q_file):
+def build_graphql(q_file):
     # build the search for the SRNs based on either a graphql file or ticket screen URL
     logger.debug("Building Query")
-    if q_file:
-        # get the query from the specified file
-        logger.debug("Using {} file to get query".format(q_file))
-        try:
-            with open(q_file, 'r') as file:
-                query_from_file = file.read().strip()
-                file.close()
-        except Exception as e:
-            print(f"An error occurred while reading the file: {e}")
-            sys.exit(100)
-        return query_from_file
-    
-    elif url:
-        # from the URL parse out the filters and build the query
-        logger.debug("Using URL {} to build the query".format(url))
-        query_from_url = parse_url(url)
-        return query_from_url
-    
-    else:
-        logger.error("No valid query provided, either provide URL or query file")
-        args.print_help()
-
-
-def build_values(parameters):
-    values = ""
-    for value in parameters:
-        values += '"' + value + '" '
-    return values
-
-
-def query_schema():
-    # this sub is for pulling own all the fields in the ListFindings endpoint so we can figure out what type the fields are
-    # and then can figure out the appropriate operator to use
-    query_schema = '''
-    query t {
-  __type(name: "ListFindings") {
-    name
-    fields {
-      name
-      type {
-        ofType {
-          name
-          fields {
-            name
-            type {
-              kind
-              }
-           
-          }
-        }
-      }
-    }
-  }
-}
-    '''
-    results_schema = api.execute_query(query_schema)
-    
-    field_list = {}
-    for field in results_schema['data']['__type']['fields'][0]['type']['ofType']['fields']:
-        field_list[field['name']] = field['type']['kind']
-    
-    # need to add a special type of freetext queries since they use a different operator
-    field_list['freeText'] = 'special'
-    return field_list
-
-
-def get_updated_mapping(key):
-    # certain URL fields are no longer in use for the ListFindings endpoint.
-    # Will remap here
-    if key == "controlFrameworkSrn":
-        # controlFrameworkSrn is the old URL key still in use and needs to be mapped to the frameworkSrns field
-        updated_key = 'frameworkSrns'
-    elif key == "swimlaneSrns":
-        # controlFrameworkSrn is the old URL key still in use and needs to be mapped to the frameworkSrns field
-        updated_key = 'swimlanes'
-    elif "ticket" in key:
-        # "ticket" keyword fields are the old endpoint fields still in use with the URL and needs to be mapped to the "finding" keyword fields with the new endpoint
-        updated_key = key.replace('ticket', 'finding')
-    elif key == "controlPolicyMetaType":
-        updated_key = 'metaType'
-    elif key == "environment":
-        updated_key = 'environments'
-    elif key == "securityArea":
-        updated_key = 'securityAreas'
-    elif key == "objectiveSrn":
-        updated_key = 'objectiveSrns'
-    elif key == "resourceSRN":
-        updated_key = 'resourceSrn'
-    elif key == "assignedTo":
-        updated_key = 'assignee'
-    elif key == "transitionedBy":
-        updated_key = 'lastTransitionedBy'
-    elif key == "standardSrn":
-        updated_key = 'standardSrns'
-    elif key == "standardFamilySrn":
-        updated_key = 'standardFamilySrns'
-    elif key == "standardControlSrn":
-        updated_key = 'standardControlSrns'
-    elif key == "freetext":
-        updated_key = 'freeText'
-    else:
-        # nothing matches so no need to remap
-        updated_key = key
-    
-    return updated_key
-
-
-def get_operator(field_type):
-    # return the type of operator required for based on the field type
-    if field_type == "LIST":
-        op = "ARRAY_CONTAINS"
-    elif field_type == "SCALAR":
-        op = "IN_LIST"
-    elif field_type == "special":
-        op = "ARRAY_CONTAINS_LIKE"
-    else:
-        # something went wrong error out
-        logger.error("field type of {} is not a valid option for building a search".format(field_type))
-        sys.exit(101)
-    return op
-
-
-def parse_url(url):
-    # build a query based on values from a URL string
-    decoded_url = urllib.parse.unquote(url)
-    parsed_url = urlparse(decoded_url)
-    query_params = parse_qs(parsed_url.query)
-    field_types = query_schema()
-    
-    where_clause = None
-    for key in query_params:
-        # walk through each url key to see if we need to do any special changes to it.
-        
-        if key == "dateType":
-            # build the date filter based on dateType and other fields
-            if "endDate" in query_params and "startDate" in query_params:
-                # build BETWEEN filter
-                logger.debug("Using start date {} and end date {}".format(query_params["startDate"][0], query_params["endDate"][0]))
-                q_filter = (' ' + query_params[key][0] + ': {op:BETWEEN, values:["' + query_params["startDate"][0] + '", "' + query_params["endDate"][0] + '"]}')
-            elif "relativeDate" in query_params:
-                offset_in_seconds = int((24 * 60 * 60 * float(query_params['relativeDate'][0])))
-                current_time = datetime.datetime.utcnow()
-                end_date = current_time.isoformat() + 'Z'
-                current_time_minus_offset = current_time - datetime.timedelta(seconds=offset_in_seconds)
-                start_date = current_time_minus_offset.isoformat() + 'Z'
-                logger.debug("Using start date {} and end date {}".format(start_date, end_date))
-                q_filter = (' ' + query_params[key][0] + ': {op:BETWEEN, values:["' + start_date + '", "' + end_date + '"]}')
-            else:
-                logger.error("invalid date filter can not proceed")
-                sys.exit(102)
-        elif key == "endDate" or key == "startDate" or key == "relativeDate":
-            # we dealt with the dates in the dataType block above
-            continue
-        elif key == "sortDirection" or key == "sortColumn":
-            # we don't need to worry about sorting, so ignoring
-            continue
-        elif key == "pageIndex":
-            # we don't need to worry about the pageIndex, so ignoring
-            continue
-        else:
-            # get all the values for a key and build IN_LIST filter
-            values = build_values(query_params[key])
-            updated_key = get_updated_mapping(key)
-            op = get_operator(field_types[updated_key])
-            if op == "ARRAY_CONTAINS_LIKE":
-                # need to use 'value' instead of 'values' for the ARRAY_CONTAINS_LIKE operator
-                q_filter = (' {key} : {{ op:{operator}, value:{value} }}'.format(key=updated_key, operator=op, value=values))
-            else:
-                # all other operators are ok with the 'values' keyword
-                q_filter = (' {key} : {{ op:{operator}, values:[ {value} ]}}'.format(key=updated_key, operator=op, value=values))
-        
-        if where_clause is None:
-            # create the where clause
-            where_clause = q_filter
-        else:
-            # add to the where clause
-            where_clause += q_filter
-    
-    if args.export:
-        # getting most of the same fields the UI grabs for an export
-        full_query = '''
-            query ListFindings ($limit: Long, $offset: Long) { ListFindings (where: { ''' + where_clause + ''' } )
-            { totalCount pageCount items (limit:$limit offset:$offset ) {
-                resourceName
-                severityNumeric
-                findingKeyName
-                findingType
-                firstSeen
-                lastSeen
-                createdBy
-                account
-                assignee
-                createdAt
-                lastTransitionedBy
-                lastTransitionedAt
-                lastModifiedAt
-                status
-                swimlanes
-                resourceSwimlanes
-                operationalizedSwimlanes
-                srn
-            } } }
-        '''
-    else:
-        # only need the SRN of the findings for all actions except export
-        full_query = '''
-        query ListFindings ($limit: Long, $offset: Long) { ListFindings (where: { ''' + where_clause + ''' } )
-             { totalCount pageCount items (limit:$limit offset:$offset) {srn} } }
-        '''
-    logger.debug("URL Query Filter = {}".format(full_query))
-    return full_query
-
-
-def add_comment_to_findings(data, comment):
-    # find the current user's srn (aka the user of the token)
-    logger.info("Adding Comments to findings")
-    sonrai_current_users = '{SonraiCurrentUsers {items {srn}}}'
-    user_response = api.execute_query(sonrai_current_users)
-    user_srn = user_response['data']['SonraiCurrentUsers']['items'][0]['srn']
-    logger.debug("Comment User SRN = {}".format(user_srn))
-    bulk_comment_mutation = '''mutation CreateFindingComment($requests: [CommentInput]) {
-  CreateFindingComments(input: {comments: $requests}) { successCount } }'''
-    counter = 0
-    total_count = 0
-    finding_var = {"requests": []}
-    
-    # find the last finding's srn, so we know when we are done the loop, and we can execute the mutation one last time
-    last_finding_srn = data['data']['ListFindings']['items'][-1]['srn']
-    global_count = data['data']['ListFindings']['totalCount']
-    for finding in data['data']['ListFindings']['items']:
-        # walk through all findings
-        if counter == 0:
-            # re-init the variable after each [findings_per_cycle] findings
-            logger.debug("Preparing {} findings to add comment".format(findings_per_cycle))
-            finding_var = {"requests": []}
-        new_item = {"findingSrn": finding['srn'], "createdBy": user_srn, "body": comment}
-        finding_var['requests'].append(new_item)
-        counter += 1
-        total_count += 1
-        if counter == findings_per_cycle or last_finding_srn == finding['srn']:
-            # we have [findings_per_cycle] findings or have reached the last findings, time to reset the counter and then add comments to the ones already processed
-            results = api.execute_query(bulk_comment_mutation, finding_var)
-            logger.debug("Added comments to findings {} / {}".format(total_count, global_count))
-            counter = 0
-    
-    logger.info("Comments were added to {} total findings".format(total_count))
+    # get the query from the specified file
+    logger.debug("Using {} file to get query".format(q_file))
+    try:
+        with open(q_file, 'r') as file:
+            query_from_file = file.read().strip()
+        file.close()
+    except Exception as e:
+        print(f"An error occurred while reading the file: {e}")
+        sys.exit(100)
+    return query_from_file
 
 
 def get_user_srn(email):
@@ -280,45 +44,36 @@ def get_user_srn(email):
     return user_srn
 
 
-def assign_findings(user_email, data):
+def assign_findings(user_email, query):
     # this will assign findings based on the query provided to 'user_email'
     # translate user_email into user_srn
     user_srn = get_user_srn(user_email)
     
-    assign_findings_mutation = '''
-    mutation AssignFindingBulk($requests: [AssignFindingRequestInput]) {
-  AssignFindingBulk(input: {requests: $requests}) {
-    results {
-      findingSrn
-      success
-      error
-    }
-  }
-}
-'''
-    counter = 0
-    total_count = 0
-    finding_var = {"requests": []}
+    where_clause_str = extract_where_clause(query)
     
-    # find the last findings's srn so we know when we are done the loop and we can execute the mutation one last time
-    last_finding_srn = data['data']['ListFindings']['items'][-1]['srn']
+    # this mutation works for NEW, CLOSED, RISK_ACCEPTED but not snooze will have to adjust below for snoozing
+    finding_status_mutation = """mutation reassignListFinding {
+    ReassignListFindings (input: {where: [where] assignee:"[user]" } ) {
+            ackMessage
+            taskId
+            taskSize
+        }
+    }"""
     
-    for finding in data['data']['ListFindings']['items']:
-        # walk through all findings
-        if counter == 0:
-            # re-init the variable after each [findings_per_cycle] findings
-            finding_var = {"requests": []}
-        new_item = {"findingSrn": finding['srn'], "userSrn": user_srn}
-        finding_var['requests'].append(new_item)
-        counter += 1
-        total_count += 1
-        if counter == findings_per_cycle or last_finding_srn == finding['srn']:
-            # we have [findings_per_cycle] findings or have reached the last finding, time to reset the counter and then add comments to the ones already processed
-            counter = 0
-            results = api.execute_query(assign_findings_mutation, finding_var)
-            logger.debug("results of assigning findings {}".format(results))
-    logger.info("Assigned {} findings to {} ({})".format(total_count, user_email, user_srn))
-
+    # replace the values in the mutation
+    finding_status_mutation = finding_status_mutation.replace("[where]", where_clause_str)
+    finding_status_mutation = finding_status_mutation.replace("[user]", user_srn)
+    
+    mutation_var = "{}"
+    results = api.execute_query(finding_status_mutation, mutation_var)
+    if 'errors' in results:
+        # something went wrong, dump the error and exit
+        logger.error("ERROR:{}".format(results))
+        sys.exit(110)
+    logger.debug(results)
+    
+    logger.info("ReassignListFindings: {}".format(results['data']['ReassignListFindings']['ackMessage']))
+    
 
 def calculate_snooze_until(snooze_days):
     snooze_date = date.today() + timedelta(days=snooze_days)
@@ -326,66 +81,81 @@ def calculate_snooze_until(snooze_days):
     return snooze_date
 
 
-def update_finding_status(action, data, snooze_days=None):
-    # this will change status of findings
+def extract_where_clause(query):
+    # use this to extract the "where" clause from the query
+    start_token = "where:"
+    stack = []
+    start_index = query.find(start_token)
+
+    if start_index == -1:
+        return "No 'where' clause found"
+
+    start_index += len(start_token)
+    in_where_clause = False
+    where_clause = ""
+
+    for i, char in enumerate(query[start_index:], start=start_index):
+        if char == '{':
+            stack.append(char)
+            in_where_clause = True
+        elif char == '}':
+            stack.pop()
+        if in_where_clause:
+            where_clause += char
+        if in_where_clause and not stack:
+            break
+
+    return where_clause.strip() if where_clause else "No 'where' clause found"
+    
+
+def update_finding_status(action, comment, query, data, snooze_days=None):
+    # this will change status of findings and add a comment
     # possible actions and the new Status
-    # ReopenFindings = 'NEW'
-    # CloseFindings = 'CLOSED'
-    # SnoozeFindings = 'SNOOZED'
-    # AcceptRiskFindings = 'RISK_ACCEPTED'
+    # ReopenListFindings = 'NEW'
+    # CloseListFindings = 'CLOSED'
+    # SnoozeListFindings = 'SNOOZED'
+    # AcceptRiskListFindings = 'RISK_ACCEPTED'
+    
+    # get the where clause out of the query
+    where_clause_str = extract_where_clause(query)
     
     # this mutation works for NEW, CLOSED, RISK_ACCEPTED but not snooze will have to adjust below for snoozing
-    finding_status_mutation = """mutation update_finding_status($srns: [String]) {
-    [action] (input: {srns: $srns}) {
-    successCount
-    failureCount
-  }
-}"""
-    
-    snooze_date = None
-    snooze_json = {}
-    # calculate the `snoozeUntil` date for SnoozeFindings
-    if action == 'SnoozeFindings':
-        snooze_date = calculate_snooze_until(snooze_days)
-        snooze_json = {'snoozedUntil': str(snooze_date)}
-        finding_status_mutation = """mutation update_finding_status($srns: [String], $snoozedUntil: DateTime) {
-        [action] (input: {srns: $srns}, snoozedUntil: $snoozedUntil) {
-        successCount
-        failureCount
+    finding_status_mutation = """mutation update_finding_status {
+    [action] (input: {where: [where] comment:"[comment]" } ) {
+            ackMessage
+            taskId
+            taskSize
       }
     }"""
     
+    # calculate the `snoozeUntil` date for SnoozeFindings
+    if action == 'SnoozeListFindings':
+        snooze_date = calculate_snooze_until(snooze_days)
+        finding_status_mutation = """mutation update_finding_status {
+        [action] (input: {where: [where] comment:"[comment]" } snoozedUntil:"[snoozedUntil]" ) {
+                ackMessage
+                taskId
+                taskSize
+          }
+        }"""
+        # replace the snooze date in the mutation
+        finding_status_mutation = finding_status_mutation.replace("[snoozedUntil]", str(snooze_date) )
+
+
+    # replace the values in the mutation
     finding_status_mutation = finding_status_mutation.replace("[action]", action)
-    counter = 0
-    total_count = 0
-    finding_var = {"srns": []}
-    if snooze_date is not None:
-        # for snoozed findings we need to add the snoozeUntil value to the json
-        finding_var.update(snooze_json)
+    finding_status_mutation = finding_status_mutation.replace("[where]", where_clause_str)
+    finding_status_mutation = finding_status_mutation.replace("[comment]", comment)
     
-    # find the last finding's srn so we know when we are done the loop and we can execute the mutation one last time
-    last_finding_srn = data['data']['ListFindings']['items'][-1]['srn']
+    mutation_var = "{}"
+    results = api.execute_query(finding_status_mutation, mutation_var)
+    if 'errors' in results:
+        # something went wrong, dump the error and exit
+        logger.error("ERROR:{}".format(results))
+        sys.exit(110)
+    logger.debug(results)
     
-    for finding in data['data']['ListFindings']['items']:
-        # walk through all findings
-        if counter == 0:
-            # re-init the variable after each [findings_per_cycle] findings
-            
-            finding_var = {"srns": []}
-            if snooze_date is not None:
-                # for snoozed findings we need to add the snoozeUntil value to the json
-                finding_var.update(snooze_json)
-        
-        finding_var['srns'].append(finding['srn'])
-        counter += 1
-        total_count += 1
-        if counter == findings_per_cycle or last_finding_srn == finding['srn']:
-            # we have [findings_per_cycle] findings or have reached the last finding, time to reset the counter and then add comments to the ones already processed
-            counter = 0
-            results = api.execute_query(finding_status_mutation, finding_var)
-            logger.debug(results)
-    
-    logger.info("Performed action {} on {} findings".format(action, total_count))
+    logger.info("{}: {}".format(action, results['data'][action]['ackMessage']))
 
 
 def query_findings(query):
@@ -463,29 +233,6 @@ def export_to_file(data, query):
             outfile.write(json_object)
 
 
-def get_fields(parent_key, dic, depth):
-    # print(dic)
-    print("depth:" + str(depth))
-    fields = []
-    if depth == 0:
-        return "NoNewKeys"
-    for key in dic:
-        print("key:" + key)
-        new_key = parent_key + '.' + key
-        if isinstance(dic[key], dict):
-            new_fields = (get_fields(new_key, dic[key], depth - 1))
-            print("new_fields:" + str(new_fields))
-            if new_fields == "NoNewKeys":
-                pass
-            else:
-                for f in new_fields:
-                    fields.append(f)
-        else:
-            fields.append(new_key)
-    # print(fields)
-    return fields
-
-
 def export_to_csv(data, query):
     # save the output to CSV
     logger.info("Exporting result to CSV file: {}".format(args.export))
@@ -538,11 +285,9 @@ def convert_swimlane_srns_to_names(data):
 
 # Create the parser
 parser = argparse.ArgumentParser(description='')
-query_method = parser.add_mutually_exclusive_group(required=True)
 
 # Add the command line options
-query_method.add_argument('-f', '--file', type=str, help='File containing graphQL query for findings')
-query_method.add_argument('-u', '--url', type=str, help='UI URL to ticket screen with the query to run. Must be a quoted string')
+parser.add_argument('-f', '--file', type=str, help='File containing graphQL query for findings')
 parser.add_argument('-l', '--limit', type=int, default=1000, help='The limit of findings to be pulled with each pass. DEFAULT = 1000')
 parser.add_argument('-m', '--message', type=str, help='Message or comment to add to finding(s). Must be a quoted string. A comment is required for all actions except --export')
 parser.add_argument('-a', '--assign', metavar='EMAIL', help='Assign finding(s) to user with <EMAIL>')
@@ -564,12 +309,6 @@ file_pattern = '([a-zA-Z]:\\|\/)?([\w\s][\/])*([\w\s]\.\w+)?'
 if args.file and not re.search(file_pattern, args.file):
     logger.error("Not a valid filename {}".format(args.file))
     sys.exit(200)
-
-# URL pattern
-url_pattern = "https://app.sonraisecurity.com/[a-zA-Z0-9@:%._\\+~#?&//=]{2,256}"
-if args.url and not re.search(url_pattern, args.url):
-    logger.error("Not a valid URL {}".format(args.url))
-    sys.exit(201)
 
 if args.limit and args.limit > 10000:
     logger.error("Limit of {} is not in a valid range of 1-10000.".format(args.limit))
@@ -616,7 +355,7 @@ if not (args.export or args.assign) and args.message is None:
 # set the number of findings to pull with each pass
 findings_per_cycle = args.limit
 
-finding_query = build_graphql(args.url, args.file)
+finding_query = build_graphql(args.file)
 
 # gather the list of findings based on the filter
 response = query_findings(finding_query)
@@ -633,29 +372,22 @@ if args.swimlane_lookup:
 # we have findings so perform the necessary action
 if args.assign:
     # assign findings from query
-    assign_findings(args.assign, response)
+    assign_findings(args.assign, finding_query)
 elif args.close:
     # close findings from query
-    add_comment_to_findings(response, args.message)
-    update_finding_status("CloseFindings", response)
+    update_finding_status("CloseListFindings", args.message, finding_query, response)
 elif args.open:
     # open findings from query
-    add_comment_to_findings(response, args.message)
-    update_finding_status("ReopenFindings", response)
+    update_finding_status("ReopenListFindings", args.message, finding_query, response)
 elif args.risk_accept:
     # risk accept findings from query
-    add_comment_to_findings(response, args.message)
-    update_finding_status("AcceptRiskFindings", response)
+    update_finding_status("RiskAcceptListFindings",args.message, finding_query, response)
 elif args.snooze:
     # snooze findings from query
-    add_comment_to_findings(response, args.message)
-    update_finding_status("SnoozeFindings", response, args.snooze)
+    update_finding_status("SnoozeListFindings", args.message, finding_query, response, args.snooze)
 elif args.export:
     # save results from finding query
     export_to_file(response, finding_query)
-elif args.message:
-    # add comment/message to findings from query
-    add_comment_to_findings(response, args.message)
 else:
     # something went wrong
     print("error: No valid operation provided")
