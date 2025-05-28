@@ -239,10 +239,88 @@ def export_to_csv(data, query):
     json_object = json.dumps(data['data']['ListFindings']['items'])
     df = pd.read_json(json_object)
     df.to_csv(args.export, encoding='utf-8', index=False)
+    
+    
+def convert_framework_srns_to_titles(data):
+    # do a lookup of the frameworks srns and add the title
+    # do a lookup of all swimlanes
+    logger.info("Converting frameworkSrns to Control Framework Names")
+    framework_query = ''' query framework { ControlFrameworks { items { srn title } } }'''
+    framework_json = api.execute_query(framework_query)
+    framework_list = {}
+    for framework_obj in framework_json['data']['ControlFrameworks']['items']:
+        # build a dict of all the swimlanes srn to title
+        framework_list[framework_obj['srn']] = framework_obj['title']
+    # this is a list of the different types of swimlanes fields found in an export
+    i = 0  # initialize the counter
+    for finding in data['data']['ListFindings']['items']:
+        # process each finding we have
+        if 'frameworkSrns' in finding:
+            # if it exists continue
+            if finding['frameworkSrns'] is None:
+                # if it is None skip it.
+                continue
+            # if this swimlane type exists with real swimlanes add the equivalent with Name appended
+            data['data']['ListFindings']['items'][i]['frameworkNames'] = []
+        else:
+            # it doesn't exist, try the next swimlane type
+            continue
+        try:
+            # putting in handling for swimlane fields that might be empty
+            for fw in finding['frameworkSrns']:
+                # add the swimlane name to the array
+                if fw not in framework_list:
+                    # old deleted swimlane, replace name with "Deleted Swimlane"
+                    data['data']['ListFindings']['items'][i]['frameworkNames'].append("Deleted Framework")
+                else:
+                    data['data']['ListFindings']['items'][i]['frameworkNames'].append(framework_list[fw])
+        except Exception as e:
+            # empty swimlane field, nothing to do
+            logger.debug("framework field doesn't exist, nothing to worry about:" + str(e))
+            pass
+        i += 1  # increment the pointer
+    return data
+
+
+def get_sonrai_user_details():
+    # do a lookup of the sonrai users details
+    logger.info("Getting Sonrai User information")
+    sonrai_user_query = '''query sonrai_users { SonraiUsers  { items { srn name email } } }'''
+    sonrai_user_json = api.execute_query(sonrai_user_query)
+    user_name_list = {}
+    user_email_list = {}
+    for user_obj in sonrai_user_json['data']['SonraiUsers']['items']:
+        # build a dicts of all users, mapping srn to name and srn to email
+        user_name_list[user_obj['srn']] = user_obj['name']
+        user_email_list[user_obj['srn']] = user_obj['email']
+    
+    return user_name_list, user_email_list
+
+
+def convert_assignee_srns_to_names(data, user_name_list, user_email_list):
+    # if a finding has an assignee, add the user's email and name
+    logger.info("Converting assignee srns to emails and names")
+    i = 0 # initialize the counter
+    for finding in data['data']['ListFindings']['items']:
+        # process each finding we have
+        if "assignee" in finding:
+            # if there is an assignee field exists, add name and email
+            if finding['assignee'] is None:
+                # No Assignee, setting to None
+                data['data']['ListFindings']['items'][i]['assignee_name'] = finding['assignee']
+                data['data']['ListFindings']['items'][i]['assignee_email'] = finding['assignee']
+            else:
+                # if this swimlane type exists with real swimlanes add the equivalent with Name appended
+                data['data']['ListFindings']['items'][i]['assignee_name'] = user_name_list[finding['assignee']]
+                data['data']['ListFindings']['items'][i]['assignee_email'] = user_email_list[finding['assignee']]
+            
+        i += 1  # increment the pointer
+    return data
 
 
 def convert_swimlane_srns_to_names(data):
     # do a lookup of all swimlanes
+    logger.info("Converting all swimlane field srns to swimlane titles")
     swimlane_query = ''' query swimlanes { Swimlanes { items { srn title } } }'''
     swimlanes_json = api.execute_query(swimlane_query)
     swimlane_list = {}
@@ -283,6 +361,41 @@ def convert_swimlane_srns_to_names(data):
     return data
 
 
+def dump_finding_comments(data, user_name_list, user_email_list):
+    # grab all finding comments. This can be slow.
+    logger.info("Getting comments for all {} findings".format(data['data']['ListFindings']['totalCount']))
+    query_list_comments = '''query ListComments($srn: String) {
+        ListCommentsForFinding(where: { findingSrn: { op: EQ, value: $srn } }){
+          items{
+            body
+            timestamp
+            createdBy
+          }
+        }
+      }
+    '''
+    i = 0  # initialize the counter as a pointer
+    for finding in data['data']['ListFindings']['items']:
+        # get the comments for each Finding
+        var_list_comments = json.dumps({"srn":finding['srn']})
+        logger.debug("Getting comments for {} ".format(finding['srn']))
+        comments = api.execute_query(query_list_comments, var_list_comments)
+        j = 0 # counter for pointer to emails
+        if comments['data']['ListCommentsForFinding']['items'] is not None:
+            for obj in comments['data']['ListCommentsForFinding']['items']:
+                if obj['createdBy'] is None or obj['createdBy'] not in user_name_list:
+                    # handle the cases where a comment is nameless or user was deleted
+                    continue
+                comments['data']['ListCommentsForFinding']['items'][j]['createBy_name'] = user_name_list[obj['createdBy']]
+                comments['data']['ListCommentsForFinding']['items'][j]['createBy_email'] = user_email_list[obj['createdBy']]
+                j += 1
+        
+        data['data']['ListFindings']['items'][i]['Comments'] = comments['data']['ListCommentsForFinding']['items']
+        i += 1
+        
+    return data
+
+
 # Create the parser
 parser = argparse.ArgumentParser(description='')
 
@@ -296,7 +409,8 @@ parser.add_argument('-o', '--open', action='store_true', default=None, help='Re-
 parser.add_argument('-r', '--risk_accept', action='store_true', default=None, help='Risk Accept finding(s) from search')
 parser.add_argument('-s', '--snooze', type=int, metavar="TIME", help='Snooze finding(s) from search for <TIME> days')
 parser.add_argument('-e', '--export', type=str, metavar="FILE", help='Export finding(s) to <FILE>. Default format is JSON')
-parser.add_argument('--swimlane_lookup', action='store_true', default=False, help='Convert all Swimlane SRNs to Swimlane names')
+parser.add_argument('--name_lookup', action='store_true', default=False, help='Convert all Swimlane SRNs, Framework SRNs, Assignee SRNs to equivalent names')
+parser.add_argument('--list_comments', action='store_true', default=False, help='For each ticket or finding, grab the associated comments')
 parser.add_argument('--csv', action="store_true", help='Used with -e option to export findings in csv format')
 # parser.add_argument('--csv', action="store_true", help='Override default JSON file format to be CSV format')
 
@@ -364,10 +478,20 @@ response = query_findings(finding_query)
 if response['data']['ListFindings']['pageCount'] == 0:
     logger.info("No findings found with query, no action will be performed")
     sys.exit(0)
+    
+user_names = user_emails = None
+if args.name_lookup or args.list_comments:
+    (user_names, user_emails) = get_sonrai_user_details()
 
-if args.swimlane_lookup:
+if args.name_lookup:
     # we need to convert the swimlane SRNs to Names
     response = convert_swimlane_srns_to_names(response)
+    response = convert_framework_srns_to_titles(response)
+    response = convert_assignee_srns_to_names(response, user_names, user_emails)
+
+if args.list_comments:
+    # look up the comments on the findings/tickets and add to the response blob
+    response = dump_finding_comments(response, user_names, user_emails)
 
 # we have findings so perform the necessary action
 if args.assign:

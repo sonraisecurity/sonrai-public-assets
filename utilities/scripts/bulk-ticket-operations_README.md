@@ -36,22 +36,23 @@ usage: bulk-ticket-operations.py [-h] -f FILE [-m MESSAGE]
                                  [-a EMAIL] [-c] [-o] [-r] [-s TIME] [-e FILE]
 ```
 
-| **option**        |                     | **description**                                                                                                                                                                                                                                                        |
-|-------------------|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-h`              | `--help`            | Provides the script's usage options                                                                                                                                                                                                                                    |
-| **query options** |                     |                                                                                                                                                                                                                                                                        |
-| `-f FILE`         | `--file FILE`       | Provide the GraphQL query in the file <FILE>. More details available [below](#Query-File-Format).                                                                                                                                                                      |
-| `-l LIMIT`        | `--limit LIMIT` | The ***LIMIT*** is the number of tickets to process with each call of the script. *Default LIMIT:* ***1000***                                                                                                                                                          |
-| **actions**       |                     |                                                                                                                                                                                                                                                                        |
-| `-m MESSAGE`      | `--message MESSAGE` | When updating the status of a ticket, a command it required. This flag is to add the comment/message.|
-| `-a EMAIL`        | `--assign EMAIL`    | Assign ticket(s) to user with *EMAIL* address                                                                                                                                                                                                                          |
-| `-c`              | `--close`           | Close ticket(s) returned from search                                                                                                                                                                                                                                   |
-| `-o`              | `--open`            | Re-open ticket(s) returned from search                                                                                                                                                                                                                                 |
-| `-r`              | `--risk_accept`     | Risk Accept ticket(s) returned from search                                                                                                                                                                                                                             |
-| `-s TIME`         | `--snooze TIME`     | Snooze ticket(s) returned from search for ***TIME*** days                                                                                                                                                                                                              |
-| `-e FILE`         | `--export FILE`     | Export ticket(s) returned from search in JSON format and save in *FILE*                                                                                                                                                                                                |
-|                   | `--csv` | Used in conjunction with the `-e` option to export in CSV format                                                                                                                                                                                                       |
-| | `--swimlane_lookup` | Used in conjunction with the `-e` option to do a Swimlane Name lookup                                                                                                                                                                                                  |
+| **option**        |                     | **description**                                                                                                                               |
+|-------------------|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `-h`              | `--help`            | Provides the script's usage options                                                                                                           |
+| **query options** |                     |                                                                                                                                               |
+| `-f FILE`         | `--file FILE`       | Provide the GraphQL query in the file <FILE>. More details available [below](#Query-File-Format).                                             |
+| `-l LIMIT`        | `--limit LIMIT`     | The ***LIMIT*** is the number of tickets to process with each call of the script. *Default LIMIT:* ***1000***                                 |
+| **actions**       |                     |                                                                                                                                               |
+| `-m MESSAGE`      | `--message MESSAGE` | When updating the status of a ticket, a comment it required. This flag is to add the comment/message.                                         |
+| `-a EMAIL`        | `--assign EMAIL`    | Assign ticket(s) to user with *EMAIL* address                                                                                                 |
+| `-c`              | `--close`           | Close ticket(s) returned from search                                                                                                          |
+| `-o`              | `--open`            | Re-open ticket(s) returned from search                                                                                                        |
+| `-r`              | `--risk_accept`     | Risk Accept ticket(s) returned from search                                                                                                    |
+| `-s TIME`         | `--snooze TIME`     | Snooze ticket(s) returned from search for ***TIME*** days                                                                                     |
+| `-e FILE`         | `--export FILE`     | Export ticket(s) returned from search in JSON format and save in *FILE*                                                                       |
+|                   | `--csv`             | Used in conjunction with the `-e` option to export in CSV format                                                                              |
+| | `--name_lookup`     | Used in conjunction with the `-e` option to do a Name lookup for Swimlane Name, Control Framework Name and Assignee Name                      |
+| | `--list_comments`   | Used in conjunction with the `-e` option to do list all comments for a finding or ticket. _Note:_ This could add considerable processing time |
 
 
 ## Query File Format
@@ -59,7 +60,7 @@ usage: bulk-ticket-operations.py [-h] -f FILE [-m MESSAGE]
 If using the option of `-f` for the query, there are a few different things that need to be added to the query to make it work properly.
 
 ### Offset and Limit
-The script is designed to query 1000 tickets at a time. To accomplish this, your query needs to have the following lines for compatibility.
+The script is designed to query 1000 tickets at a time. To achieve this, your query needs to have the following lines for compatibility.
 
 - **opening header**
   - `query ListFindings ($limit:Long $offset:Long) {`
@@ -75,7 +76,7 @@ The filters added to the `where` clause and the fields added to the `items` sect
 If you only want tickets and not findings you can add a line to the filter like this:
 - `isOperationalized:{op:EQ value:true}`
 
-*NOTE:* The more fields you add to the query, the larger the results set that is returned, and the longer the query will take to complete.
+*NOTE:* The more fields you add to the query, the larger the result set that is returned, and the longer the query will take to complete.
 
 ### Sample Queries
 
@@ -122,6 +123,8 @@ query ListFindings ($limit: Long, $offset: Long) {
         evidence { policyEvidence }
         resource{account}
         swimlanes{title}
+        frameworkSrns
+        assignee
       }
   }
 }
