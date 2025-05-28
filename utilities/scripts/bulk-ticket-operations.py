@@ -419,7 +419,7 @@ args = parser.parse_args()
 
 # verify inputs for valid data
 # file name pattern
-file_pattern = '([a-zA-Z]:\\|\/)?([\w\s][\/])*([\w\s]\.\w+)?'
+file_pattern = r'([a-zA-Z]:\\|\/)?([\w\s][\/])*([\w\s]\.\w+)?'
 if args.file and not re.search(file_pattern, args.file):
     logger.error("Not a valid filename {}".format(args.file))
     sys.exit(200)
@@ -437,7 +437,7 @@ if args.snooze and args.snooze > 10000:
     logger.error("Snooze value of {} is not in a valid range of 1-10000.".format(args.snooze))
     sys.exit(204)
 
-email_pattern = "([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
+email_pattern = r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
 if args.assign and not re.search(email_pattern, args.assign):
     logger.error("The email address is not a valid pattern {}".format(args.assign))
     sys.exit(205)
