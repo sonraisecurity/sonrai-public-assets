@@ -214,7 +214,7 @@ def token_expired():
     current_time = time.time()
     remaining = decoded_token['exp'] - current_time
 
-    # If token is near expiration, return true.  Otherwise false.
+    # If token is near expiration, return true.  Otherwise, false.
     if remaining < 0:
         logger.debug("token has expired, cannot be renewed.")
         return True
@@ -235,7 +235,19 @@ if not _env_token:
 
     else:
         # ask for a token
-        logger.error("No 'user token' found, Please visit this page: https://docs.sonraisecurity.com/api/sonrai-graphql-api")
+        tokenquery = '''
+    mutation createToken { GenerateSonraiUserToken (input:{
+        expiresIn: 7200 # time in seconds
+        name: "token" # token name
+      }) {
+        name
+        expireAt
+        token
+      }
+    }  
+        '''
+        logger.error("No 'user token' found. You can generate a new token at ")
+        logger.error("https://app.sonraisecurity.com/App/GraphExplorer with the query \n" + tokenquery + "")
         token = input('Enter Sonrai User Token (no quotes): ')
 
         if token:
