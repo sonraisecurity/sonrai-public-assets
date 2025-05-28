@@ -15,3 +15,4 @@ The scripts in this folder make use of the [sonrai_api](../sonrai_api/README.md)
 
 - example.py - basic script showing how to use sonrai_api library
 - [bulk-ticket-operations.py](bulk-ticket-operations_README.md) - script to perform bulk actions on Sonrai tickets
+- [cpf-migrate-controls.py](cpf-migrate-controls_README.md) - script to migrate CPF controls from one AWS Account to another AWS Account
