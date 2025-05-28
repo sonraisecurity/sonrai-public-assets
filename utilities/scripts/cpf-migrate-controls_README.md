@@ -22,7 +22,7 @@ Before using this script, ensure that you have:
 The script can be used to migrate controls (disabled or protected) from one AWS account to another. It is designed to support both real execution and dry runs for testing purposes.
 
 ```
-python bulk_ticket_operations.py --source <source_account_id> --target <target_account_id> [--test]
+python cpf-migrate-controls.py --source <source_account_id> --target <target_account_id> [--test]
 ```
 
 #### Arguments
@@ -37,13 +37,13 @@ python bulk_ticket_operations.py --source <source_account_id> --target <target_a
 ## Example
 #### Full execution:
 ```
-python bulk_ticket_operations.py --source 123456789012 --target 987654321098
+python cpf-migrate-controls.py --source 123456789012 --target 987654321098
 ````
 This will fetch the disabled and protected services from the source account and migrate them to the target account.
 
 #### Dry run:
 ```
-python bulk_ticket_operations.py --source 123456789012 --target 987654321098 --test
+python cpf-migrate-controls.py --source 123456789012 --target 987654321098 --test
 ````
 This will simulate the migration, logging the actions without performing them.
 
