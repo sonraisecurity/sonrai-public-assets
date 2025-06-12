@@ -4,7 +4,7 @@ A utility script to generate Sonrai Security user invite GraphQL mutations from 
 
 ## Features
 - Reads a CSV file with user email and name.
-- Supports three roles: Viewer, Administrator, and Approver.
+- Supports two roles: Viewer and Administrator
 - Lets you specify the Sonrai organization ID and invite validity period.
 - Outputs GraphQL mutations for each user in the CSV.
 
