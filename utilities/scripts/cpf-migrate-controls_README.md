@@ -22,7 +22,7 @@ Before using this script, ensure that you have:
 The script can be used to migrate controls (disabled or protected) from one AWS account to another. It is designed to support both real execution and dry runs for testing purposes.
 
 ```
-python cpf-migrate-controls.py --source <source_account_id> --target <target_account_id> [--test]
+python bulk_ticket_operations.py --source <source_account_id> --target <target_account_id> [--test]
 ```
 
 #### Arguments
@@ -37,17 +37,18 @@ python cpf-migrate-controls.py --source <source_account_id> --target <target_acc
 ## Example
 #### Full execution:
 ```
-python cpf-migrate-controls.py --source 123456789012 --target 987654321098
+python bulk_ticket_operations.py --source 123456789012 --target 987654321098
 ````
 This will fetch the disabled and protected services from the source account and migrate them to the target account.
 
 #### Dry run:
 ```
-python cpf-migrate-controls.py --source 123456789012 --target 987654321098 --test
+python bulk_ticket_operations.py --source 123456789012 --target 987654321098 --test
 ````
 This will simulate the migration, logging the actions without performing them.
 
 ## Notes
-The script retrieves the "scope" for the source and target AWS accounts before fetching the services.
-
-The script handles both "disabled" and "protected" services and migrates them to the target account.
+- The script retrieves the "scope" for the source and target AWS accounts before fetching the services.
+- The script handles both "disabled" and "protected" services and migrates them to the target account.
+- After migration, any service controls in the target account that also exist in the source account will be overwritten by the source account's state. Service controls that exist only in the target account will remain unchanged.
+- Any identities exempted for a service in the source account will ***NOT*** be copied to the target account.
