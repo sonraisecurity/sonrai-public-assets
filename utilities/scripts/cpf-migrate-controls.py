@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
+import os
 from sonrai_api import api, logger
 
 # Set up verbose logging
@@ -31,7 +33,8 @@ def get_scope(account_id):
         if item['resourceId'] == account_id:
             return item['scope']
 
-    raise ValueError("Scope not found for account {}".format(account_id))
+    logger.error("Scope not found for account {}".format(account_id))
+    return None
 
 def get_controls_by_status(scope):
     """Retrieves services by status (Disabled or Protected)"""
@@ -114,44 +117,73 @@ def protect_control(controlKey, scope, test):
 def main():
     parser = argparse.ArgumentParser(description="Migrate disabled or protected Cloud Permission Firewall controls between AWS accounts.")
     parser.add_argument("-s", "--source", required=True, help="Source AWS account ID")
-    parser.add_argument("-t","--target", required=True, help="Target AWS account ID")
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument( "-t", "--target", help="Target AWS account ID" )
+    group.add_argument( "--target-file", help="Path to file with target AWS account IDs, one per line" )
+    
     parser.add_argument("--test", action="store_true", help="Dry run - log actions without executing")
     
     args = parser.parse_args()
-
+    
+    # Validate and collect target account IDs
+    if args.target:
+        target_accounts = [args.target]
+    elif args.target_file:
+        if not os.path.isfile(args.target_file):
+            logger.error(f"Target file '{args.target_file}' does not exist.")
+            sys.exit(1)
+        with open(args.target_file, "r") as f:
+            target_accounts = [line.strip() for line in f if line.strip()]
+    else:
+        logger.error("Either --target or --target-file must be provided.")
+        sys.exit(1)
+        
     logger.info("Retrieving scopes for accounts...")
     #get source account scope
     source_scope = get_scope(args.source)
-    #get destination account scope
-    target_scope = get_scope(args.target)
-
-    logger.info("Source scope: {}".format(source_scope))
-    logger.info("Target scope: {}".format(target_scope))
-
+    if source_scope is None:
+        # invalid source account, exit
+        logger.error("Failed to retrieve scope for source account {}".format(args.source))
+        sys.exit(1)
+    else:
+        logger.info("Source scope: {}".format(source_scope))
+        
     logger.info("Fetching disabled and protected services from source account...")
     disabled_controls, protected_controls = get_controls_by_status(source_scope)
-
+    
     total = len(disabled_controls) + len(protected_controls)
     if total == 0:
         logger.info("No disabled or protected services found in source account.")
         return
-
+    
     logger.info("Found {} disabled and {} protected controls to migrate.".format(len(disabled_controls), len(protected_controls)))
-
-    for control in disabled_controls:
-        if args.test:
-            logger.info("[DRY RUN] Disabling {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
+    
+    # Process each target account individually
+    for target_account in target_accounts:
+        #get destination account scope
+        logger.info(f"Processing target account: {target_account}")
+        target_scope = get_scope(target_account)
+        if target_scope is None:
+            # If we can't find the scope for the target account, skip it
+            continue
         else:
-            logger.info("[EXECUTING] Disabling {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
+            logger.info("Target scope: {}".format(target_scope))
 
-        disable_control(control["controlKey"], target_scope, args.test)
+        for control in disabled_controls:
+            if args.test:
+                logger.info("[DRY RUN] Disabling {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
+            else:
+                logger.info("[EXECUTING] Disabling {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
 
-    for control in protected_controls:
-        if args.test:
-            logger.info("[DRY RUN] Protecting {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
-        else:
-            logger.info("[EXECUTING] Protecting {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
-        protect_control(control["controlKey"], target_scope, args.test)
+            disable_control(control["controlKey"], target_scope, args.test)
+
+        for control in protected_controls:
+            if args.test:
+                logger.info("[DRY RUN] Protecting {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
+            else:
+                logger.info("[EXECUTING] Protecting {control} {control_key} in target account". format(control=control['name'],control_key=control['controlKey']))
+            protect_control(control["controlKey"], target_scope, args.test)
 
 if __name__ == "__main__":
     main()
