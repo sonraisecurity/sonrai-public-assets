@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from sonrai_api import api, logger
+from sonrai_api import api
 from collections import defaultdict
 
 
@@ -17,13 +17,13 @@ def search_control_keys(pattern):
       }
     }
     """
-    vars = {
+    query_vars = {
         "filter": {
             "cloudType": {"op": "EQ", "value": "aws"},
             "controlKey": {"op": "ILIKE", "value": f"%{pattern}%"}
         }
     }
-    response = api.execute_query(query, json.dumps(vars))
+    response = api.execute_query(query, json.dumps(query_vars))
     controls = response.get("data", {}).get("CloudControls", {}).get("items", [])
     if not controls:
         print("No matching control keys found.")
@@ -68,13 +68,13 @@ def list_service_status(control_key, cloud_hierarchy, scope, verbose=False):
       }
     }
     """
-    vars = {
+    query_vars = {
         "filters": {
             "scope": {"op": "STARTS_WITH", "value": scope},
             "controlKey": {"op": "EQ", "value": control_key}
         }
     }
-    response = api.execute_query(query, json.dumps(vars))
+    response = api.execute_query(query, json.dumps(query_vars))
     if not isinstance(response, dict) or "data" not in response:
         print("Error: Unexpected response format from API.")
         return
@@ -118,24 +118,25 @@ def is_action_supported(control_key, action):
       }
     }
     """
-    vars = {
+    query_vars = {
         "filter": {
             "controlKey": {"op": "EQ", "value": control_key},
             "cloudType": {"op": "EQ", "value": "aws"}
         }
     }
-    response = api.execute_query(query, json.dumps(vars))
+    response = api.execute_query(query, json.dumps(query_vars))
     items = response.get("data", {}).get("CloudControls", {}).get("items", [])
     if not items:
         print(f"Error: No service found for controlKey '{control_key}'.")
         return None
-
-    control_types = items[0].get("controlType", [])
-    if action == "protect" and "Permissions" not in control_types:
-        return False
-    if action == "disable" and "ServiceBlock" not in control_types:
-        return False
-    return True
+    
+    for item in items:
+        control_types = item.get("controlType", [])
+        if action == "protect" and "Permissions" in control_types:
+            return True
+        if action == "disable" and "ServiceBlock" in control_types:
+            return True
+    return False
 
 
 def fetch_account_scopes_from_org(org_id):
@@ -244,23 +245,51 @@ def apply_service_action(action, control_key, scopes, dryrun):
     print(f"Total accounts to be processed: {len(scopes)}")
 
     for account, scope in scopes.items():
-        vars = {
+        query_vars = {
             "input": {
                 "controlKey": control_key,
                 "scope": scope
             }
         }
         if action == "protect":
-            vars["input"].update({"identities": [], "ssoActorIds": []})
+            query_vars["input"].update({"identities": [], "ssoActorIds": []})
         if dryrun:
             print(f"[DryRun] Would apply '{action}' to '{control_key}' on account {account} ({scope})")
         else:
             print(f"Applying '{action}' to '{control_key}' on account {account} ({scope})")
             try:
-                response = api.execute_query(mutation, json.dumps(vars))
+                response = api.execute_query(mutation, json.dumps(query_vars))
                 print(response)
             except Exception as e:
                 print(f"Error applying action to account {account}: {e}")
+                
+def pending_changes(scope):
+    query = """
+        query fetchPendingChangesCount($filters: PendingChangeFilter) {
+        PendingChanges(where: $filters) {
+          count
+          __typename
+        }
+      }
+    """
+    query_vars = {
+        "filters": {
+          "inTransaction": {
+            "value": False,
+            "op": "EQ"
+          },
+          "rootScope": {
+            "value": scope,
+            "op": "EQ"
+          }
+        }
+      }
+    response = api.execute_query(query, json.dumps(query_vars))
+    count = response.get("data", {}).get("PendingChanges", {}).get("count",0)
+    if count > 0:
+        print(f"Warning: There are {count} pending changes in the organization.")
+        return True
+    return False
 
 
 def main():
@@ -281,8 +310,12 @@ def main():
     if args.search:
         search_control_keys(args.search)
         return
+    
+    if not args.management_org:
+        print("Error: You must specify the management organization account ID with --management-org")
+        return
 
-    accounts, friendly_scope_mapping, scope = fetch_account_scopes_from_org(args.management_org) if args.management_org else ({}, {}, {})
+    accounts, friendly_scope_mapping, scope = fetch_account_scopes_from_org(args.management_org)
 
     if args.list_status:
         if not args.control_key:
@@ -302,7 +335,14 @@ def main():
     if not action or not args.control_key:
         print("Error: You must specify --control-key and one of --protect, --disable, or --unprotect")
         return
-
+    
+    if pending_changes(scope):
+        print("\n\nThere are already pending changes in CPF for this AWS organization. Proceed? (Y/N) ")
+        ans = input().strip().lower()
+        if ans != 'y':
+            print("Exiting without making changes.")
+            return
+    
 
     if args.include:
         include_accounts = load_account_list(args.include)
