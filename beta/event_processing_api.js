@@ -550,7 +550,7 @@
         
         // Include both comments if they exist
         var hasComments = false;
-        if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim()) {
+        if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim() !== '') {
             description += '- Requester Comment: ' + payload.requesterComment.trim() + '\n';
             hasComments = true;
         }
