@@ -200,7 +200,7 @@
             approvalNote += 'Session ID: ' + payload.jitSessionId + '\n';
             
             // Add requester comment if present
-            if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim()) {
+            if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim() !== '') {
                 approvalNote += 'Requester comment: ' + payload.requesterComment.trim() + '\n';
             }
             
