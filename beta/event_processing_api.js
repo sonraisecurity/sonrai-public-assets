@@ -243,7 +243,7 @@
                         status: 'JIT access approved and tracked',
                         comments_included: {
                             requester_comment: !!(payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim() !== ''),
-                            approver_comment: !!(payload.comment && typeof payload.comment === 'string' && payload.comment.trim())
+                            approver_comment: !!(payload.comment && typeof payload.comment === 'string' && payload.comment.trim() !== '')
                         }
                     }
                 });
