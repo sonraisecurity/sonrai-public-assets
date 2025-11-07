@@ -205,7 +205,7 @@
             }
             
             // Add approver comment if present
-            if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim()) {
+            if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim() !== '') {
                 approvalNote += 'Approver comment: ' + payload.comment.trim() + '\n';
             }
             
