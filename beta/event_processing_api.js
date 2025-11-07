@@ -555,7 +555,7 @@
             hasComments = true;
         }
         
-        if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim()) {
+        if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim() !== '') {
             description += '- Approver Comment: ' + payload.comment.trim() + '\n';
             hasComments = true;
         }
