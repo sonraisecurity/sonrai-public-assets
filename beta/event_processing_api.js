@@ -200,12 +200,12 @@
             approvalNote += 'Session ID: ' + payload.jitSessionId + '\n';
             
             // Add requester comment if present
-            if (payload.requesterComment && payload.requesterComment.trim()) {
+            if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim()) {
                 approvalNote += 'Requester comment: ' + payload.requesterComment.trim() + '\n';
             }
             
             // Add approver comment if present
-            if (payload.comment && payload.comment.trim()) {
+            if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim()) {
                 approvalNote += 'Approver comment: ' + payload.comment.trim() + '\n';
             }
             
@@ -242,8 +242,8 @@
                         correlation_id: payload.jitSessionId,
                         status: 'JIT access approved and tracked',
                         comments_included: {
-                            requester_comment: !!(payload.requesterComment && payload.requesterComment.trim()),
-                            approver_comment: !!(payload.comment && payload.comment.trim())
+                            requester_comment: !!(payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim()),
+                            approver_comment: !!(payload.comment && typeof payload.comment === 'string' && payload.comment.trim())
                         }
                     }
                 });
@@ -439,7 +439,7 @@
                 summaryNote += 'Summary Status: ' + (payload.summary.status || 'Unknown') + '\n';
                 
                 // Add regions if available
-                if (payload.summary.regions && payload.summary.regions.length > 0) {
+                if (payload.summary.regions && Array.isArray(payload.summary.regions) && payload.summary.regions.length > 0) {
                     summaryNote += 'Regions Accessed: ' + payload.summary.regions.join(', ') + '\n';
                 }
                 
@@ -550,12 +550,12 @@
         
         // Include both comments if they exist
         var hasComments = false;
-        if (payload.requesterComment && payload.requesterComment.trim()) {
+        if (payload.requesterComment && typeof payload.requesterComment === 'string' && payload.requesterComment.trim()) {
             description += '- Requester Comment: ' + payload.requesterComment.trim() + '\n';
             hasComments = true;
         }
         
-        if (payload.comment && payload.comment.trim()) {
+        if (payload.comment && typeof payload.comment === 'string' && payload.comment.trim()) {
             description += '- Approver Comment: ' + payload.comment.trim() + '\n';
             hasComments = true;
         }
