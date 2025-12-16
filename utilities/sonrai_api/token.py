@@ -6,6 +6,7 @@ import jwt
 import sys
 import json
 import requests
+import readline
 
 from os import path
 from datetime import datetime
@@ -20,6 +21,24 @@ lib_path = Path(__file__).parent.absolute()
 class SonraiAPIException(Exception):
     """Base class for other exceptions"""
     pass
+
+
+def prompt_for_new_token():
+    """Prompt user to generate and enter a new Sonrai token."""
+    tokenquery = '''
+    mutation createToken { GenerateSonraiUserToken (input:{
+        expiresIn: 7200 # time in seconds
+        name: "token" # token name
+      }) {
+        name
+        expireAt
+        token
+      }
+    }  
+    '''
+    logger.error("You can generate a new token at https://app.sonraisecurity.com/App/GraphExplorer with the query above.")
+    logger.error(tokenquery)
+    return input('Enter Sonrai User Token (no quotes): ')
 
 
 # globals
@@ -84,12 +103,29 @@ def store_token():
 def verify_token():
     # Decode token, parse expiration date, and calculate time remaining
     # if within expiration time > 0, renew token
+    global token
     try:
         decoded_token = jwt.decode(token, options=_jwt_options, algorithms=["RS256"])
 
-    except Exception:
-        os.remove(os.path.join(_token_store, _token_file))
-        raise SonraiAPIException("Bad Token")
+    except jwt.exceptions.ExpiredSignatureError:
+        logger.error("Your token has expired. Please provide a new one.")
+        if os.path.exists(os.path.join(_token_store, _token_file)):
+            os.remove(os.path.join(_token_store, _token_file))
+        
+        token = prompt_for_new_token()
+        
+        if token:
+            store_token()
+            # Try to verify the new token
+            return verify_token()
+        else:
+            raise SonraiAPIException("No token provided")
+    
+    except Exception as e:
+        logger.error(f"Token verification failed: {str(e)}")
+        if os.path.exists(os.path.join(_token_store, _token_file)):
+            os.remove(os.path.join(_token_store, _token_file))
+        raise SonraiAPIException("Invalid Token")
 
     # ORG and ORGS
     decoded_token['org'] = decoded_token['https://sonraisecurity.com/org']
@@ -235,20 +271,8 @@ if not _env_token:
 
     else:
         # ask for a token
-        tokenquery = '''
-    mutation createToken { GenerateSonraiUserToken (input:{
-        expiresIn: 7200 # time in seconds
-        name: "token" # token name
-      }) {
-        name
-        expireAt
-        token
-      }
-    }  
-        '''
-        logger.error("No 'user token' found. You can generate a new token at ")
-        logger.error("https://app.sonraisecurity.com/App/GraphExplorer with the query \n" + tokenquery + "")
-        token = input('Enter Sonrai User Token (no quotes): ')
+        logger.error("No 'user token' found.")
+        token = prompt_for_new_token()
 
         if token:
             store_token()
