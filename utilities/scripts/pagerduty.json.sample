@@ -1,0 +1,12 @@
+{
+  "api_key": "PAGERDUTY_API_TOKEN",
+  "schedule_id": "PXXXXXXXX",
+  "output_file": "/opt/cpf/cpf_frompagerduty_approversatscope.txt",
+  "cpf_scope": "my_scope_value",
+  "time_zone": "UTC",
+  "loglevel": "INFO",
+  "default_approvers": [
+    "user1@example.com",
+    "user2@example.com"
+  ]
+}
