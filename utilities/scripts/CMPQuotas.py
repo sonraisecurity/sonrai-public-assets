@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 # Constants for quota increase
 SERVICE_CODE = 'iam'
 QUOTA_CODES = ['L-0DA4ABF3']  # Quota codes for desired policies
-DESIRED_QUOTA_VALUE = 20
+DESIRED_QUOTA_VALUE = 25
 ASSUME_ROLE_NAME = 'OrganizationAccountAccessRole'  # Default IAM role for AWS Organizations
 
 def assume_role(account_id, role_name):
