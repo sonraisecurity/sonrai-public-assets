@@ -16,13 +16,14 @@ Before using this script, ensure that you have:
 - Python 3.x installed.
 - Access to the Sonrai Security API and valid credentials to interact with it.
 - Necessary permissions to interact with AWS accounts for modifying Cloud Permission Firewall controls.
+- A copy of the [`sonrai_api`](https://github.com/sonraisecurity/sonrai-public-assets/tree/main/utilities/sonrai_api) python library files
 
 ## Usage
 
 The script can be used to migrate controls (disabled or protected) from one AWS account to another. It is designed to support both real execution and dry runs for testing purposes.
 
 ```
-python bulk_ticket_operations.py --source SOURCE  (-t TARGET | --target-file TARGET_FILE) [--test]
+python cpf-migrate-controls.py --source SOURCE  (-t TARGET | --target-file TARGET_FILE) [--test]
 ```
 
 #### Arguments
