@@ -28,7 +28,7 @@ This script requires **Python 3**, as well as the *requests* and *pyjwt* librari
 |------------------------------|-----------------------------------------------------------|-------------|
 | sonrai-api-log-level         | Log level for the api.py file                             | INFO        |
 | sonrai-token-log-level       | Log level for the token.py file                           | DEBUG       |
-| token_store                  | Directory of the token file                               | /tmp/sonrai |
+| token_store                  | Directory of the token file                               | /tmp/sonrai/|
 | token_file                   | Name of the token file                                    | token       |
 | token_length_secs            | Length of time token is valid (MAX 7200)                  | 7200        |
 | token_refresh_threshold_secs | Minimum time of token life before auto renewal            | 1800        |
