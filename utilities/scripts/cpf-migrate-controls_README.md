@@ -33,6 +33,7 @@ python cpf-migrate-controls.py --source SOURCE  (-t TARGET | --target-file TARGE
 | `--target` or `-t` | **(Mutually exclusive with ****\`target_file\`****)** Single AWS Account ID to target                                |
 | `--target-file`    | **(Mutually exclusive with ****`target`****)** Path to file containing a list of target account IDs (one per line) |
 | `--test`           | (Optional) If set, performs a dry-run without executing actions                                                      |
+| `--verbose`        | (Optional) If set, logs per-account details including the number of services disabled or protected in each account   |
 
 ### **Requirements**
 
@@ -65,6 +66,7 @@ Contents of `targets.txt`:
 666677778888
 ```
 
+
 ### Test mode (dry run)
 
 ```bash
@@ -74,6 +76,16 @@ python cpf-migrate-controls.py \
   --test
 ```
 This will simulate the migration, logging the actions without performing them.
+
+### Verbose mode (per-account details)
+
+```bash
+python cpf-migrate-controls.py \
+  --source 111122223333 \
+  --target-file targets.txt \
+  --verbose
+```
+This will log a summary of how many accounts were updated and, for each account, the number of services disabled or protected.
 
 ## Notes
 - The script retrieves the "scope" for the source and target AWS accounts before fetching the services.
