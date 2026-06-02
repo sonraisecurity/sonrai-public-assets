@@ -32,6 +32,7 @@ query resolveScope($filter: CloudHierarchyFilter) {
       scopeFriendlyName
       resourceId
       entryType
+      active
     }
   }
 }
@@ -94,6 +95,7 @@ mutation unquarantineZombies($input: ChangeQuarantineStatusInput) {
 """.strip()
 
 BATCH_SIZE = 50
+TABLE_MAX_ROWS = 50
 
 # CSV columns written by the list --output flag (compatible with quarantine/unquarantine input)
 LIST_CSV_FIELDNAMES = [
@@ -450,6 +452,63 @@ def fetch_friendly_names(scopes):
     return result
 
 
+def fetch_account_status(root_scopes):
+    """Return {scope: {entryType, active}} for every account-level entry under the given org roots.
+
+    One CloudHierarchyList query per root. Used to filter out identities whose
+    account is a management account or suspended/deactivated before quarantining.
+    """
+    status = {}
+    for root in root_scopes:
+        query_filter = {"scope": {"op": "STARTS_WITH", "value": root}}
+        try:
+            response = api.execute_query(QUERY_HIERARCHY, json.dumps({"filter": query_filter}))
+            items = (response or {}).get("data", {}).get("CloudHierarchyList", {}).get("items", [])
+            for item in items:
+                if item.get("entryType") in ("account", "managementAccount"):
+                    status[item["scope"]] = {
+                        "entryType": item.get("entryType"),
+                        "active": item.get("active", True),
+                    }
+        except Exception as e:
+            logger.warning(f"Could not fetch account status for '{root}': {e}")
+    return status
+
+
+def validate_quarantine_targets(rows):
+    """Drop identities whose account is a management account or inactive.
+
+    Returns (kept_rows, summary_dict).
+    """
+    if not rows:
+        return rows, {"mgmt": 0, "inactive": 0, "unknown": 0}
+
+    root_scopes = sorted({r["rootScope"] for r in rows})
+    status = fetch_account_status(root_scopes)
+
+    kept = []
+    skipped_mgmt = 0
+    skipped_inactive = 0
+    skipped_unknown = 0
+    for r in rows:
+        info = status.get(r["scope"])
+        if info is None:
+            logger.warning(f"Skipping '{r['name']}': account scope '{r['scope']}' not found in CloudHierarchyList")
+            skipped_unknown += 1
+            continue
+        if info["entryType"] == "managementAccount":
+            logger.warning(f"Skipping '{r['name']}': account '{r['account']}' is a management account")
+            skipped_mgmt += 1
+            continue
+        if not info["active"]:
+            logger.warning(f"Skipping '{r['name']}': account '{r['account']}' is suspended/deactivated")
+            skipped_inactive += 1
+            continue
+        kept.append(r)
+
+    return kept, {"mgmt": skipped_mgmt, "inactive": skipped_inactive, "unknown": skipped_unknown}
+
+
 def ms_to_iso(ms):
     if ms is None:
         return ""
@@ -486,6 +545,22 @@ def _print_table(rows, headers):
     print("  ".join("-" * w for w in widths))
     for row in rows:
         print("  ".join(val.ljust(widths[i]) for i, val in enumerate(row)))
+
+
+def _render_table(table_rows, headers, output_file=None):
+    """Print a table, truncating to TABLE_MAX_ROWS when the dataset is large.
+
+    If output_file is set and the table would be truncated, skip the table
+    entirely — _write_csv already logged the row count and destination.
+    """
+    if len(table_rows) <= TABLE_MAX_ROWS:
+        _print_table(table_rows, headers)
+        return
+    if output_file:
+        print(f"({len(table_rows)} rows — see {output_file})")
+        return
+    _print_table(table_rows[:TABLE_MAX_ROWS], headers)
+    print(f"... and {len(table_rows) - TABLE_MAX_ROWS} more rows (use --output FILE to capture all)")
 
 
 def _write_csv(csv_rows, output_file):
@@ -558,7 +633,7 @@ def list_quarantined(scope_filter=None, days_quarantined=None, output_file=None)
     if output_file:
         _write_csv(csv_rows, output_file)
 
-    _print_table(table_rows, ["NAME", "ACCOUNT", "SCOPE", "QUARANTINED ON", "LAST USED"])
+    _render_table(table_rows, ["NAME", "ACCOUNT", "SCOPE", "QUARANTINED ON", "LAST USED"], output_file)
 
 
 def _query_unused_identities(scope, threshold):
@@ -649,7 +724,7 @@ def list_zombies(scope_filter=None, days=None, output_file=None):
     if output_file:
         _write_csv(csv_rows, output_file)
 
-    _print_table(table_rows, ["NAME", "ACCOUNT", "SCOPE", "LAST ACTIVE"])
+    _render_table(table_rows, ["NAME", "ACCOUNT", "SCOPE", "LAST ACTIVE"], output_file)
 
 
 def _batch(lst, size):
@@ -659,14 +734,16 @@ def _batch(lst, size):
 
 def run_quarantine(groups, dryrun):
     total = sum(len(v) for v in groups.values())
+    total_batches = sum((len(v) + BATCH_SIZE - 1) // BATCH_SIZE for v in groups.values())
     succeeded = 0
     failed = 0
+    batch_num = 0
 
     for root_scope, identities in groups.items():
         for batch in _batch(identities, BATCH_SIZE):
+            batch_num += 1
             if dryrun:
-                for ident in batch:
-                    logger.info(f"[DRY RUN] Would quarantine '{ident['name']}' ({ident['resourceId']}) at '{ident['scope']}'")
+                logger.info(f"[DRY RUN] [quarantine {batch_num}/{total_batches}] would quarantine {len(batch)} identit{'y' if len(batch) == 1 else 'ies'} at rootScope '{root_scope}'")
                 succeeded += len(batch)
                 continue
 
@@ -689,13 +766,13 @@ def run_quarantine(groups, dryrun):
                 success = result.get("success", False)
                 count = result.get("count", len(batch))
                 if success:
-                    logger.info(f"[quarantine] {count} identit{'y' if count == 1 else 'ies'} at rootScope '{root_scope}' — OK")
+                    logger.info(f"[quarantine {batch_num}/{total_batches}] {count} identit{'y' if count == 1 else 'ies'} at rootScope '{root_scope}' — OK")
                     succeeded += len(batch)
                 else:
-                    logger.warning(f"[quarantine] batch at rootScope '{root_scope}' — success=False")
+                    logger.warning(f"[quarantine {batch_num}/{total_batches}] batch at rootScope '{root_scope}' — success=False")
                     failed += len(batch)
             except Exception as e:
-                logger.error(f"Error quarantining batch at '{root_scope}': {e}")
+                logger.error(f"[quarantine {batch_num}/{total_batches}] error at '{root_scope}': {e}")
                 failed += len(batch)
 
     logger.info(f"\nDone. {succeeded} succeeded, {failed} failed out of {total} total.")
@@ -703,14 +780,16 @@ def run_quarantine(groups, dryrun):
 
 def run_unquarantine(groups, dryrun):
     total = sum(len(v) for v in groups.values())
+    total_batches = sum((len(v) + BATCH_SIZE - 1) // BATCH_SIZE for v in groups.values())
     succeeded = 0
     failed = 0
+    batch_num = 0
 
     for root_scope, identities in groups.items():
         for batch in _batch(identities, BATCH_SIZE):
+            batch_num += 1
             if dryrun:
-                for ident in batch:
-                    logger.info(f"[DRY RUN] Would unquarantine '{ident['name']}' ({ident['resourceId']}) at '{ident['scope']}'")
+                logger.info(f"[DRY RUN] [unquarantine {batch_num}/{total_batches}] would unquarantine {len(batch)} identit{'y' if len(batch) == 1 else 'ies'} at rootScope '{root_scope}'")
                 succeeded += len(batch)
                 continue
 
@@ -734,13 +813,13 @@ def run_unquarantine(groups, dryrun):
                 result = (response or {}).get("data", {}).get("ChangeQuarantineStatus", {})
                 success = result.get("success", False)
                 if success:
-                    logger.info(f"[unquarantine] {len(batch)} identit{'y' if len(batch) == 1 else 'ies'} at rootScope '{root_scope}' — OK")
+                    logger.info(f"[unquarantine {batch_num}/{total_batches}] {len(batch)} identit{'y' if len(batch) == 1 else 'ies'} at rootScope '{root_scope}' — OK")
                     succeeded += len(batch)
                 else:
-                    logger.warning(f"[unquarantine] batch at rootScope '{root_scope}' — success=False")
+                    logger.warning(f"[unquarantine {batch_num}/{total_batches}] batch at rootScope '{root_scope}' — success=False")
                     failed += len(batch)
             except Exception as e:
-                logger.error(f"Error unquarantining batch at '{root_scope}': {e}")
+                logger.error(f"[unquarantine {batch_num}/{total_batches}] error at '{root_scope}': {e}")
                 failed += len(batch)
 
     logger.info(f"\nDone. {succeeded} succeeded, {failed} failed out of {total} total.")
@@ -783,7 +862,7 @@ examples:
     %(prog)s list-zombies
 
   List zombies unused for 180+ days in a specific org:
-    %(prog)s list-zombies --days 180 --scope aws/r-bitm --output zombies-out.csv
+    %(prog)s list-zombies --days 180 --scope aws/r-xxxx --output zombies-out.csv
 
   Pipe zombie list into quarantine:
     %(prog)s list-zombies --output zombies-out.csv
@@ -792,8 +871,8 @@ examples:
 csv file format (quarantine/unquarantine input):
   Columns (with or without a header row):
     Scope,Identity,Last active
-    aws/r-bitm/ou-bitm-xxx/123456789012,arn:aws:iam::123456789012:role/MyRole,Unused
-    aws/r-bitm/ou-bitm-xxx/123456789012,arn:aws:iam::123456789012:role/OtherRole,2025-08-01T00:00:00.000Z
+    aws/r-xxxx/ou-xxxx-xxxxxxxxx/123456789012,arn:aws:iam::123456789012:role/MyRole,Unused
+    aws/r-xxxx/ou-xxxx-xxxxxxxxx/123456789012,arn:aws:iam::123456789012:role/OtherRole,2025-08-01T00:00:00.000Z
 
   - Scope may be blank; derived from the account number in the ARN via API lookup.
   - Identity may be a bare name instead of a full ARN; looked up via UnusedIdentities API.
@@ -863,11 +942,17 @@ csv file format (quarantine/unquarantine input):
     rows = load_csv(args.csv)
     logger.info(f"Loaded {len(rows)} rows from '{args.csv}'")
 
+    bare_name_count = sum(1 for r in rows if not r["resourceId"].startswith("arn:"))
+    if bare_name_count:
+        logger.info(f"{bare_name_count} of {len(rows)} rows use bare identity names — each requires a per-row API lookup, which may be slow at scale")
+
     resolved = []
-    for row in rows:
+    for i, row in enumerate(rows, start=1):
         r = resolve_row(row)
         if r is not None:
             resolved.append(r)
+        if i % 1000 == 0:
+            logger.info(f"  resolved {i}/{len(rows)} rows...")
 
     skipped = len(rows) - len(resolved)
     logger.info(f"Resolved {len(resolved)} identities" + (f" ({skipped} skipped)" if skipped else ""))
@@ -881,6 +966,18 @@ csv file format (quarantine/unquarantine input):
         logger.info(f"Scope filter '{scope_filter}': {len(resolved)} of {before} identities match")
 
     if args.command == "quarantine":
+        before = len(resolved)
+        resolved, skipped = validate_quarantine_targets(resolved)
+        parts = [f"{len(resolved)} qualify"]
+        if skipped["mgmt"]:
+            parts.append(f"{skipped['mgmt']} in management account")
+        if skipped["inactive"]:
+            parts.append(f"{skipped['inactive']} in suspended/deactivated account")
+        if skipped["unknown"]:
+            parts.append(f"{skipped['unknown']} account not found")
+        if before != len(resolved):
+            logger.info("Account validation: " + ", ".join(parts))
+
         days = args.days
         if days is None:
             days = fetch_zombie_threshold()

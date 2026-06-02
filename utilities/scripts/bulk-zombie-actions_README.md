@@ -92,7 +92,7 @@ python bulk-zombie-actions.py list-quarantined [--scope SCOPE] [--days N] [--out
 python bulk-zombie-actions.py list-quarantined
 
 # List identities quarantined for 30+ days in a specific org
-python bulk-zombie-actions.py list-quarantined --scope aws/r-bitm --days 30
+python bulk-zombie-actions.py list-quarantined --scope aws/r-xxxx --days 30
 
 # Export to CSV for use with unquarantine
 python bulk-zombie-actions.py list-quarantined -o quarantined.csv
@@ -125,7 +125,7 @@ If `--scope` is not provided, the script automatically queries all org roots fou
 python bulk-zombie-actions.py list-zombies
 
 # List zombies unused for 90+ days in a specific org
-python bulk-zombie-actions.py list-zombies --scope aws/r-bitm --days 90
+python bulk-zombie-actions.py list-zombies --scope aws/r-xxxx --days 90
 
 # Export and pipe into quarantine
 python bulk-zombie-actions.py list-zombies -o zombies-out.csv
@@ -142,9 +142,9 @@ All `--scope` values are resolved automatically. Accepted formats:
 
 | Input | Example |
 |---|---|
-| Full scope string | `aws/r-bitm/ou-bitm-xxx/123456789012` |
-| Org root ID | `r-bitm` or `aws/r-bitm` |
-| OU ID | `ou-bitm-hjr6a0li` |
+| Full scope string | `aws/r-xxxx/ou-xxxx-xxxxxxxxx/123456789012` |
+| Org root ID | `r-xxxx` or `aws/r-xxxx` |
+| OU ID | `ou-xxxx-xxxxxxxxx` |
 | 12-digit account number | `471112776591` |
 | Account or OU name | `"My Production Account"` |
 
@@ -158,8 +158,8 @@ If a name matches multiple scopes, the script lists the candidates and exits —
 
 ```
 Scope,Identity,Last active
-aws/r-bitm/ou-bitm-xxx/123456789012,arn:aws:iam::123456789012:role/MyRole,Unused
-aws/r-bitm/ou-bitm-xxx/123456789012,arn:aws:iam::123456789012:role/OtherRole,2025-08-01T00:00:00.000Z
+aws/r-xxxx/ou-xxxx-xxxxxxxxx/123456789012,arn:aws:iam::123456789012:role/MyRole,Unused
+aws/r-xxxx/ou-xxxx-xxxxxxxxx/123456789012,arn:aws:iam::123456789012:role/OtherRole,2025-08-01T00:00:00.000Z
 ```
 
 - **Scope** — may be blank; the script derives it from the account number in the ARN, or performs a global search across all orgs if Identity is also a bare name
