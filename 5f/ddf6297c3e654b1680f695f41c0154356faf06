@@ -1,0 +1,19 @@
+LICENSE
+  s_78a32732bd3838::t_11f80c50bef220 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "5fddf6297c3e654b1680f695f41c0154356faf06",
+  "prompts": {},
+  "sessions": {
+    "s_78a32732bd3838": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13dec7bb-1228-4511-8021-6734d5d2ccbd",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Chris Daigle <chris.daigle@sonraisecurity.com>"
+    }
+  }
+}
