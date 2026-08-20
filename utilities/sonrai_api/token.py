@@ -146,6 +146,29 @@ def verify_token():
     return decoded_token
 
 
+# A bare hostname: letters, digits, dots and hyphens only. Anything else
+# ('/', '@', ':', whitespace) could retarget the request when interpolated
+# into the URL below.
+_HOST_ALLOWED_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-"
+)
+
+
+def _validate_api_host(host):
+    """Reject an API host that is not a bare hostname.
+
+    `host` is interpolated straight into "https://{}/graphql". It comes from
+    the SONRAI_API_SERVER environment variable, or from the org claim in the
+    token, so a value containing '/', '@' or ':' could point every API call at
+    an attacker-chosen server (CWE-918).
+    """
+    if not host or not set(host) <= _HOST_ALLOWED_CHARS:
+        raise ValueError(
+            "Invalid Sonrai API host {!r}: expected a bare hostname".format(host)
+        )
+    return host
+
+
 def get_graph_url():
     if _api_server is None:
         decoded_token = jwt.decode(token, options=_jwt_options, algorithms=["RS256"])
@@ -164,7 +187,7 @@ def get_graph_url():
     else:
         s = str(_api_server).strip()
 
-    URL = "https://{}/graphql".format(s)
+    URL = "https://{}/graphql".format(_validate_api_host(s))
     logger.debug("API server: " + URL)
 
     return URL

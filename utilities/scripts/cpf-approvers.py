@@ -7,6 +7,31 @@ import logging
 from sonrai_api import api, logger
 from collections import defaultdict
 
+# --- CSV formula injection guard (CWE-1236) ---------------------------------
+# Excel and Sheets execute a cell whose text starts with one of these
+# characters. Values below come from API data we do not control, so a crafted
+# name can run a formula when someone opens the export.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Prefix a quote so a spreadsheet reads the cell as text, not a formula."""
+    if not isinstance(value, str) or not value.startswith(_CSV_FORMULA_PREFIXES):
+        return value
+    try:
+        float(value)  # a plain negative number is not a formula
+        return value
+    except ValueError:
+        return "'" + value
+
+
+def _csv_safe_row(row):
+    """Apply _csv_safe across a list row or a dict row."""
+    if isinstance(row, dict):
+        return {k: _csv_safe(v) for k, v in row.items()}
+    return [_csv_safe(v) for v in row]
+
+
 CLOUD_HIERARCHY_QUERY = """
 query getCloudHierarchyList($filters: CloudHierarchyFilter) {
   CloudHierarchyList(where: $filters) {
@@ -121,10 +146,10 @@ def export_hierarchy(cloud_type, output_file, management_account_id):
         writer.writerow(["scope", "scopeFriendlyName", "entryType", "resourceId", "owners"])
         for item in resp['data']['CloudHierarchyList']['items']:
             owners = ",".join([o['email'] for o in (item.get('owners') or []) if o.get('email')])
-            writer.writerow([
+            writer.writerow(_csv_safe_row([
                 item['scope'], item['scopeFriendlyName'], item['entryType'],
                 item['resourceId'], owners
-            ])
+            ]))
 
 def import_owners(input_file, dry_run=False):
     logger.info(f"Importing owners from {input_file} (dry run: {dry_run})")
