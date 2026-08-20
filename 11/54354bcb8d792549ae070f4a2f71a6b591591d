@@ -1,0 +1,23 @@
+utilities/scripts/bulk-zombie-actions.py
+  s_565e09d8c69450::t_be1a58ad2be2bd 12-36,596
+utilities/scripts/cpf-approvers.py
+  s_565e09d8c69450::t_be1a58ad2be2bd 10-34,149,152
+utilities/sonrai_api/token.py
+  s_565e09d8c69450::t_be1a58ad2be2bd 149-171,190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "1154354bcb8d792549ae070f4a2f71a6b591591d",
+  "prompts": {},
+  "sessions": {
+    "s_565e09d8c69450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f971fae5-6181-4c3d-9687-6cd3c144a1dd",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
