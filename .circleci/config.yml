@@ -1,0 +1,16 @@
+version: 2.1
+
+jobs:
+  syntax-check:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Byte-compile all Python sources
+          command: python -m compileall -q .
+
+workflows:
+  validate:
+    jobs:
+      - syntax-check
