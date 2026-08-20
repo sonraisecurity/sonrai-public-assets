@@ -1,0 +1,19 @@
+.circleci/config.yml
+  s_e7cd3258110925::t_ff94863e339d18 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3f644584bcaec46d0c02b539495ccbe155af1ec6",
+  "prompts": {},
+  "sessions": {
+    "s_e7cd3258110925": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e28d0e2-44c3-4d58-8d48-d47e80b1e274",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Chris Daigle <chris.daigle@sonraisecurity.com>"
+    }
+  }
+}
