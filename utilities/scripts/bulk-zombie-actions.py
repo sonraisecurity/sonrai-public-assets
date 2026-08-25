@@ -9,6 +9,31 @@ from datetime import datetime, timezone
 
 from sonrai_api import api, logger
 
+# --- CSV formula injection guard (CWE-1236) ---------------------------------
+# Excel and Sheets execute a cell whose text starts with one of these
+# characters. Values below come from API data we do not control, so a crafted
+# name can run a formula when someone opens the export.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Prefix a quote so a spreadsheet reads the cell as text, not a formula."""
+    if not isinstance(value, str) or not value.startswith(_CSV_FORMULA_PREFIXES):
+        return value
+    try:
+        float(value)  # a plain negative number is not a formula
+        return value
+    except ValueError:
+        return "'" + value
+
+
+def _csv_safe_row(row):
+    """Apply _csv_safe across a list row or a dict row."""
+    if isinstance(row, dict):
+        return {k: _csv_safe(v) for k, v in row.items()}
+    return [_csv_safe(v) for v in row]
+
+
 
 QUERY_CPF_CONFIGS = """
 query fetchCPFConfigs {
@@ -568,7 +593,7 @@ def _write_csv(csv_rows, output_file):
     with open(output_file, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=LIST_CSV_FIELDNAMES)
         writer.writeheader()
-        writer.writerows(csv_rows)
+        writer.writerows(_csv_safe_row(r) for r in csv_rows)
     logger.info(f"Wrote {len(csv_rows)} rows to {output_file}")
 
 
